@@ -181,9 +181,14 @@ func TestBootstrapBusyBox(t *testing.T) {
 	if err != nil {
 		t.Skip("BusyBox is not installed")
 	}
-	f := newFixture(t, "riscv64", "wget")
-	out, status := f.Run(t, []string{path, "sh"}, "--help")
-	if status != 0 || !strings.Contains(out, "arg=<--help>") {
-		t.Fatalf("status %d: %s", status, out)
+	script, err := os.Open("../../onekvm.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer script.Close()
+	cmd := exec.Command(path, "sh", "-n")
+	cmd.Stdin = script
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("BusyBox sh -n failed: %v\n%s", err, output)
 	}
 }

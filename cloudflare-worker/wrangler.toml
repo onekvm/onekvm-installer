@@ -1,0 +1,8 @@
+name = "onekvm-sh"
+main = "src/worker.js"
+compatibility_date = "2026-10-21"
+
+# The custom domain is attached once and then follows every Worker deployment.
+routes = [
+  { pattern = "onekvm.sh", custom_domain = true }
+]

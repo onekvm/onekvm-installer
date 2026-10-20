@@ -1,0 +1,132 @@
+name: Deploy download Worker
+
+on:
+  release:
+    types: [published]
+  workflow_run:
+    workflows: [Build and release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy (blank uses the latest stable release)
+        required: false
+        type: string
+      domain:
+        description: Cloudflare custom domain (blank uses the repository variable or onekvm.sh)
+        required: false
+        type: string
+      worker_name:
+        description: Cloudflare Worker name (blank uses the repository variable or onekvm-sh)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'release' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        startsWith(github.event.workflow_run.head_branch, 'v')
+      )
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.event.workflow_run.head_branch || inputs.tag }}
+      WORKER_DOMAIN: ${{ inputs.domain || vars.CLOUDFLARE_WORKER_DOMAIN || 'onekvm.sh' }}
+      WORKER_NAME: ${{ inputs.worker_name || vars.CLOUDFLARE_WORKER_NAME || 'onekvm-sh' }}
+    steps:
+      - name: Check out Worker source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Download and verify release script
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          if [[ -z "$tag" ]]; then
+            tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 20 \
+              --exclude-drafts --exclude-pre-releases --json tagName \
+              --jq '.[0].tagName')
+          fi
+          [[ -n "$tag" ]] || { echo 'No stable release was found.' >&2; exit 1; }
+          mkdir -p .worker-release
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern onekvm.sh --pattern SHA256SUMS \
+            --dir .worker-release
+          grep -E '  (\./)?onekvm\.sh$' .worker-release/SHA256SUMS \
+            > .worker-release/onekvm.sha256
+          (cd .worker-release && sha256sum -c onekvm.sha256)
+          echo "Deploying onekvm.sh from release $tag"
+
+      - name: Embed release script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          script_path = Path('.worker-release/onekvm.sh')
+          script_bytes = script_path.read_bytes()
+          script = script_bytes.decode('utf-8')
+          if not script.startswith('#!/bin/sh'):
+              raise SystemExit('release asset is not an onekvm.sh script')
+          digest = hashlib.sha256(script_bytes).hexdigest()
+          destination = Path('cloudflare-worker/src/installer-script.js')
+          destination.write_text(
+              'export const INSTALLER_SCRIPT = '
+              + json.dumps(script, ensure_ascii=True)
+              + ';\nexport const INSTALLER_SCRIPT_SHA256 = '
+              + json.dumps(digest)
+              + ';\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Configure custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          name = os.environ['WORKER_NAME'].strip()
+          if not re.fullmatch(r'[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?', name):
+              raise SystemExit('WORKER_NAME must use lowercase letters, numbers, hyphens, or underscores')
+
+          domain = os.environ['WORKER_DOMAIN'].strip().rstrip('.')
+          labels = domain.split('.')
+          if not labels or len(domain) > 253 or any(
+              not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label)
+              for label in labels
+          ):
+              raise SystemExit('WORKER_DOMAIN must be a hostname without a scheme or path')
+          template = Path('cloudflare-worker/wrangler.toml.template').read_text()
+          Path('cloudflare-worker/wrangler.generated.toml').write_text(
+              template.replace('__WORKER_NAME__', name).replace('__WORKER_DOMAIN__', domain),
+          )
+          print(f'Using Cloudflare Worker {name} with custom domain: {domain}')
+          PY
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloudflare-worker
+          command: deploy --config wrangler.generated.toml

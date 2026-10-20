@@ -1,0 +1,7 @@
+name = "__WORKER_NAME__"
+main = "src/worker.js"
+compatibility_date = "2026-10-21"
+
+routes = [
+  { pattern = "__WORKER_DOMAIN__", custom_domain = true }
+]

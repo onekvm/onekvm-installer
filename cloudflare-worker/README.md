@@ -15,11 +15,11 @@ cache because the response depends on the request's User-Agent.
 
 The Worker source is deployed by
 [`../.github/workflows/deploy-worker.yml`](../.github/workflows/deploy-worker.yml)
-after a GitHub Release is published. It observes the repository's successful
-`Build and release` workflow for `v*` tags, and also supports releases created
-outside that workflow. It downloads `onekvm.sh` and `SHA256SUMS` from the
-selected Release, verifies the asset, embeds it in `src/installer-script.js`,
-and deploys the Worker with Wrangler.
+after the repository's successful `Build and release` workflow completes for a
+version tag. It downloads `onekvm.sh` and `SHA256SUMS` from the selected
+Release, verifies the asset, embeds it in `src/installer-script.js`, and
+deploys the Worker with Wrangler. A manual workflow run can deploy an existing
+Release created outside that workflow.
 
 ## Cloudflare setup
 

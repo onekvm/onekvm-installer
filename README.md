@@ -38,7 +38,7 @@ with `sudo`:
 (curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sudo sh
 ```
 
-The bootstrap script detects `riscv64`, `arm64`, or `amd64`, downloads the
+The bootstrap script detects `riscv64` or `arm64`, downloads the
 matching package from the [latest GitHub Release](https://github.com/onekvm/onekvm-installer/releases/latest),
 and verifies its SHA-256 checksum before starting the installer. A mirror can
 be used by setting the variable on the shell side of the pipe:
@@ -118,7 +118,7 @@ make help       # List targets
 make build      # Build for the current architecture
 make test       # Run tests and go vet
 make check      # Run formatting, shell checks, tests, and vet
-make release    # Build Linux riscv64, arm64, and amd64 binaries
+make release    # Build Linux riscv64 and arm64 binaries
 make package    # Create dist/v<VERSION>/ release assets
 ```
 
@@ -138,8 +138,8 @@ enables all machine implementations for host-side tests.
 
 GitHub Actions runs checks and packages on pushes and pull requests. A `v*`
 tag whose version matches `internal/buildinfo/version.go` publishes a Release
-containing Linux `riscv64`, `arm64`, and `amd64` archives, `SHA256SUMS`, and
-`onekvm.sh`. Serving the published `onekvm.sh` as
+containing Linux `riscv64` and `arm64` executables, a separate
+`THIRD_PARTY_NOTICES.txt`, `SHA256SUMS`, and `onekvm.sh`. Serving the published `onekvm.sh` as
 `https://onekvm.sh` enables the one-line entry point.
 
 The release workflow can also deploy the optional Cloudflare Worker in

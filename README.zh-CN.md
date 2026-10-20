@@ -34,7 +34,7 @@ NanoKVM Pro PCIe 目前不可用，因为仓库尚未包含对应的设备树和
 (curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sudo sh
 ```
 
-入口脚本会识别 `riscv64`、`arm64` 或 `amd64`，从 [GitHub latest Release](https://github.com/onekvm/onekvm-installer/releases/latest)
+入口脚本会识别 `riscv64` 或 `arm64`，从 [GitHub latest Release](https://github.com/onekvm/onekvm-installer/releases/latest)
 下载匹配的软件包，并在启动安装器前校验 SHA-256。也可以在管道右侧指定镜像：
 
 ```sh
@@ -105,7 +105,7 @@ make help       # 查看目标
 make build      # 构建当前架构
 make test       # 运行测试和 go vet
 make check      # 运行格式、脚本检查、测试和 vet
-make release    # 构建 Linux riscv64、arm64 和 amd64 二进制
+make release    # 构建 Linux riscv64 和 arm64 二进制
 make package    # 生成 dist/v<VERSION>/ 发布文件
 ```
 
@@ -124,7 +124,8 @@ CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 \
 
 GitHub Actions 会在分支更新和 PR 时运行检查并打包。推送与
 `internal/buildinfo/version.go` 版本一致的 `v*` tag 后，会发布包含 Linux
-`riscv64`、`arm64` 和 `amd64` 压缩包、`SHA256SUMS` 及 `onekvm.sh` 的 Release。
+`riscv64` 和 `arm64` 可执行文件、单独的
+`THIRD_PARTY_NOTICES.txt`、`SHA256SUMS` 及 `onekvm.sh` 的 Release。
 将发布的 `onekvm.sh` 部署为 `https://onekvm.sh` 即可启用一键入口。
 
 仓库还提供可选的 [Cloudflare Worker](cloudflare-worker/README.md)。每次

@@ -48,7 +48,8 @@ jobs:
         run: |
           cd "$RELEASE_DIR"
           sha256sum -c SHA256SUMS
-          ../onekvm-installer-linux-amd64 --version
+          test -x ../onekvm-installer-linux-riscv64
+          test -x ../onekvm-installer-linux-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: onekvm-installer
@@ -75,10 +76,17 @@ jobs:
         shell: bash
         run: |
           cd release
+          old_assets=$(gh release view "$RELEASE_TAG" --json assets \
+            --jq '.assets[].name | select(endswith(".tar.gz") or contains("linux-amd64"))' 2>/dev/null || true)
+          while IFS= read -r asset; do
+            if [[ -n "$asset" ]]; then
+              gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+            fi
+          done <<<"$old_assets"
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" --verify-tag --title "OneKVM Installer $RELEASE_TAG" --generate-notes --draft
           fi
-          gh release upload "$RELEASE_TAG" ./*.tar.gz ./SHA256SUMS ./onekvm.sh --clobber
+          gh release upload "$RELEASE_TAG" ./onekvm-installer-*-linux-* ./THIRD_PARTY_NOTICES.txt ./SHA256SUMS ./onekvm.sh --clobber
           if [[ "$RELEASE_TAG" == *-* ]]; then
             gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
           else

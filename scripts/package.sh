@@ -4,6 +4,9 @@ set -eu
 version=${1:?version is required}
 destination="dist/v${version}"
 mkdir -p "$destination"
+rm -f "$destination"/onekvm-installer-*-linux-* \
+    "$destination"/onekvm.sh "$destination"/THIRD_PARTY_NOTICES.txt \
+    "$destination"/SHA256SUMS
 staging=$(mktemp -d "$destination/.package.XXXXXX")
 trap 'rm -rf "$staging"' EXIT HUP INT TERM
 
@@ -17,18 +20,12 @@ while IFS= read -r license; do
     cat "$license" >>"$notices"
 done <"$staging/licenses.list"
 
-for architecture in riscv64 arm64 amd64; do
+for architecture in riscv64 arm64; do
     name="onekvm-installer-${version}-linux-${architecture}"
-    mkdir -p "$staging/$name"
-    install -m0755 "dist/onekvm-installer-linux-${architecture}" "$staging/$name/onekvm-installer"
-    install -m0644 README.md LICENSE "$notices" "$staging/$name/"
-    install -m0644 vendor/modules.txt "$staging/$name/DEPENDENCIES.txt"
-    printf '%s\n' "$version" >"$staging/$name/VERSION"
-    tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
-        -C "$staging" -cf "$staging/$name.tar" "$name"
-    gzip -n -c "$staging/$name.tar" >"$destination/$name.tar.gz"
+    install -m0755 "dist/onekvm-installer-linux-${architecture}" "$destination/$name"
 done
 
 install -m0755 onekvm.sh "$destination/onekvm.sh"
-(cd "$destination" && sha256sum ./onekvm.sh ./*.tar.gz >SHA256SUMS)
+install -m0644 "$notices" "$destination/THIRD_PARTY_NOTICES.txt"
+(cd "$destination" && sha256sum ./onekvm.sh ./onekvm-installer-*-linux-* ./THIRD_PARTY_NOTICES.txt >SHA256SUMS)
 printf 'Packages: %s\n' "$destination"

@@ -25,7 +25,7 @@ cleanup() {
 }
 
 main() {
-    for dependency in uname mktemp awk sha256sum tar chmod rm; do
+    for dependency in uname mktemp awk sha256sum chmod rm; do
         command -v "$dependency" >/dev/null 2>&1 || fail "Required command not found: $dependency"
     done
 
@@ -35,8 +35,7 @@ main() {
     case "$machine" in
         riscv64) architecture=riscv64 ;;
         aarch64|arm64) architecture=arm64 ;;
-        x86_64|amd64) architecture=amd64 ;;
-        *) fail "Unsupported architecture: $machine (supported: riscv64, arm64, amd64)" ;;
+        *) fail "Unsupported architecture: $machine (supported: riscv64, arm64)" ;;
     esac
 
     if command -v curl >/dev/null 2>&1; then
@@ -73,7 +72,7 @@ main() {
             name = $2
             sub(/^\*/, "", name)
             sub(/^\.\//, "", name)
-            if (name ~ ("^onekvm-installer-[0-9][0-9A-Za-z.+_-]*-linux-" arch "\\.tar\\.gz$")) {
+            if (name ~ ("^onekvm-installer-[0-9][0-9A-Za-z.+_-]*-linux-" arch "$")) {
                 count++
                 selected = tolower($1) " " name
             }
@@ -83,19 +82,16 @@ main() {
             print selected
         }
     ' "$workdir/SHA256SUMS" >"$workdir/selected" || fail "The release must contain exactly one Linux $architecture package with a SHA-256 checksum."
-    IFS=' ' read -r expected_hash archive <"$workdir/selected"
+    IFS=' ' read -r expected_hash binary_name <"$workdir/selected"
 
-    printf 'Downloading %s\n' "$archive" >&2
-    download "$release_url/$archive" "$workdir/$archive" || fail 'Cannot download the installer package.'
-    printf '%s  %s\n' "$expected_hash" "$archive" >"$workdir/selected.sha256"
+    printf 'Downloading %s\n' "$binary_name" >&2
+    download "$release_url/$binary_name" "$workdir/$binary_name" || fail 'Cannot download the installer package.'
+    printf '%s  %s\n' "$expected_hash" "$binary_name" >"$workdir/selected.sha256"
     (cd "$workdir" && sha256sum -c selected.sha256) >&2 || fail 'SHA-256 verification failed. The installer was not started.'
 
-    directory=${archive%.tar.gz}
-    tar -xzf "$workdir/$archive" -C "$workdir" "$directory/onekvm-installer" || fail 'Cannot extract the installer.'
-    binary="$workdir/$directory/onekvm-installer"
+    binary="$workdir/$binary_name"
     [ -f "$binary" ] && [ ! -L "$binary" ] || fail 'The package does not contain an installer executable.'
     chmod 700 "$binary"
-    rm -f "$workdir/$archive"
 
     # stdin is the script pipe with `curl ... | sh`. Bubble Tea needs the
     # controlling terminal instead. Read-only commands also work without a TTY.

@@ -1,9 +1,7 @@
 package bootstrap_test
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -24,27 +22,6 @@ printf 'arg=<%s>\n' "$@"
 exit "${ONEKVM_TEST_EXIT:-0}"
 `
 
-func archive(t *testing.T, arch string) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	name := "onekvm-installer-0.1.0-linux-" + arch + "/onekvm-installer"
-	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0755, Size: int64(len(fixtureBinary))}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := tw.Write([]byte(fixtureBinary)); err != nil {
-		t.Fatal(err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return buf.Bytes()
-}
-
 type fixture struct {
 	mu       sync.RWMutex
 	env      []string
@@ -57,9 +34,9 @@ type fixture struct {
 func newFixture(t *testing.T, machine, downloader string) *fixture {
 	t.Helper()
 	f := &fixture{files: make(map[string][]byte)}
-	for _, arch := range []string{"riscv64", "arm64", "amd64"} {
-		name := "onekvm-installer-0.1.0-linux-" + arch + ".tar.gz"
-		data := archive(t, arch)
+	for _, arch := range []string{"riscv64", "arm64"} {
+		name := "onekvm-installer-0.1.0-linux-" + arch
+		data := []byte(fixtureBinary)
 		f.files["/"+name] = data
 		f.manifest += fmt.Sprintf("%x  ./%s\n", sha256.Sum256(data), name)
 	}
@@ -87,7 +64,7 @@ func newFixture(t *testing.T, machine, downloader string) *fixture {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"mktemp", "awk", "sha256sum", "tar", "gzip", "chmod", "rm", downloader} {
+	for _, name := range []string{"mktemp", "awk", "sha256sum", "chmod", "rm", downloader} {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			t.Fatalf("test dependency %s: %v", name, err)
@@ -140,7 +117,7 @@ func (f *fixture) Run(t *testing.T, shell []string, args ...string) (string, int
 
 func TestBootstrapArchitectures(t *testing.T) {
 	for machine, arch := range map[string]string{
-		"riscv64": "riscv64", "aarch64": "arm64", "arm64": "arm64", "x86_64": "amd64", "amd64": "amd64",
+		"riscv64": "riscv64", "aarch64": "arm64", "arm64": "arm64",
 	} {
 		t.Run(machine, func(t *testing.T) {
 			f := newFixture(t, machine, "curl")
@@ -164,11 +141,11 @@ func TestBootstrapRejectsInvalidRelease(t *testing.T) {
 				machine = "armv7l"
 			}
 			f := newFixture(t, machine, "curl")
-			const name = "/onekvm-installer-0.1.0-linux-riscv64.tar.gz"
+			const name = "/onekvm-installer-0.1.0-linux-riscv64"
 			f.mu.Lock()
 			switch test {
 			case "checksum mismatch":
-				f.files[name] = []byte("corrupt archive")
+				f.files[name] = []byte("corrupt binary")
 			case "missing package":
 				delete(f.files, name)
 			case "duplicate package":

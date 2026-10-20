@@ -3,7 +3,7 @@ export CGO_ENABLED := 0
 export GOFLAGS := -mod=vendor
 
 VERSION := $(shell sed -n 's/^const Version = "\(.*\)"/\1/p' internal/buildinfo/version.go)
-ARCHITECTURES := riscv64 arm64 amd64
+ARCHITECTURES := riscv64 arm64
 GO ?= go
 
 .PHONY: help build test check release package clean
@@ -13,7 +13,7 @@ help:
 	@echo 'make build    Build the installer for this machine'
 	@echo 'make test     Run Go tests and vet (including bootstrap tests)'
 	@echo 'make check    Check formatting, shell syntax, tests and vet'
-	@echo 'make release  Build Linux riscv64, arm64 and amd64 binaries'
+	@echo 'make release  Build Linux riscv64 and arm64 binaries'
 	@echo 'make package  Create dist/v$(VERSION)/ release assets'
 	@echo 'make clean    Remove dist/'
 

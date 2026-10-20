@@ -1,0 +1,18 @@
+{
+  "name": "OneKVM Installer",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "GOWORK": "off",
+    "CGO_ENABLED": "0",
+    "GOFLAGS": "-mod=vendor"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go", "timonwong.shellcheck"]
+    }
+  },
+  "postCreateCommand": "make check"
+}

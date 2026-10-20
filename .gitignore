@@ -1,0 +1,5 @@
+/dist/
+/onekvm-installer
+*.test
+coverage.out
+internal/machines/nanokvmpro/firmware/*.bsdiff

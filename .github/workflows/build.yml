@@ -35,8 +35,10 @@ jobs:
       - run: make check
       - name: Check bootstrap with BusyBox
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y busybox
+          if ! command -v busybox >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y busybox
+          fi
           busybox sh -n onekvm.sh
           GOWORK=off GOFLAGS=-mod=vendor go test -count=1 -run TestBootstrapBusyBox ./internal/bootstrap
       - run: make package

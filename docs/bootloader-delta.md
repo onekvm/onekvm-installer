@@ -50,5 +50,5 @@
 当前原厂 1.0.15 另有独立差分：源 `c1db005b2d61a5ed8627c70e659b5274a5d87a4d97daac356646d53b63dd44d6`，
 补丁 24,341 字节，SHA-256 `22e3c1adeb1a2bc8a99e5a1fb7aaec4d7fcb2ef59c4c9225d8f5f0f245be0c26`。
 目标哈希同上，EIP 区域一致，Go 解码器完整重建与故障注入的有界写入测试已通过。
-差分文件不入 Git，测试构建前放在 `internal/machines/nanokvmpro/firmware/`，由 Go embed 集成；
-缺少这些已固定哈希的包时，修复停止。
+差分文件随安装器源码放在 `internal/machines/nanokvmpro/firmware/`，由 Go
+embed 集成到 arm64 发布包；缺少或哈希不匹配这些已固定哈希的包时，修复停止。

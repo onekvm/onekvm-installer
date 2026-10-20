@@ -16,6 +16,18 @@ type memorySPL struct {
 	short, corrupt bool
 }
 
+func TestBundledSPLPatchPayloads(t *testing.T) {
+	for _, info := range proSPLPatches {
+		patch, err := proFirmware.ReadFile("firmware/" + info[0])
+		if err != nil {
+			t.Fatalf("missing bundled patch %s: %v", info[0], err)
+		}
+		if got := digest(patch); got != info[1] {
+			t.Fatalf("bundled patch %s has SHA-256 %s, want %s", info[0], got, info[1])
+		}
+	}
+}
+
 func (m *memorySPL) ReadAt(out []byte, off int64) (int, error) {
 	n := copy(out, m.data[off:])
 	if n < len(out) {

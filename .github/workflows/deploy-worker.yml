@@ -60,15 +60,20 @@ jobs:
               --exclude-drafts --exclude-pre-releases --json tagName \
               --jq '.[0].tagName')
           fi
-          [[ -n "$tag" ]] || { echo 'No stable release was found.' >&2; exit 1; }
           mkdir -p .worker-release
-          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
-            --pattern onekvm.sh --pattern SHA256SUMS \
-            --dir .worker-release
-          grep -E '  (\./)?onekvm\.sh$' .worker-release/SHA256SUMS \
-            > .worker-release/onekvm.sha256
-          (cd .worker-release && sha256sum -c onekvm.sha256)
-          echo "Deploying onekvm.sh from release $tag"
+          if [[ -n "$tag" ]]; then
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+              --pattern onekvm.sh --pattern SHA256SUMS \
+              --dir .worker-release
+            grep -E '  (\./)?onekvm\.sh$' .worker-release/SHA256SUMS \
+              > .worker-release/onekvm.sha256
+            (cd .worker-release && sha256sum -c onekvm.sha256)
+            echo "Deploying onekvm.sh from release $tag"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/contents/onekvm.sh?ref=$GITHUB_SHA" \
+              --jq .content | base64 --decode > .worker-release/onekvm.sh
+            echo "No stable release found; deploying onekvm.sh from $GITHUB_SHA"
+          fi
 
       - name: Embed release script
         shell: bash

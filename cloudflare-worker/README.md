@@ -46,8 +46,9 @@ name and domain for each deployment. [`wrangler.toml`](wrangler.toml) remains
 a local configuration for the default `onekvm-sh` Worker and `onekvm.sh`
 domain.
 
-The workflow can be started manually with a release tag, or without a tag to
-deploy the latest non-draft, non-prerelease release.
+The workflow can be started manually with a release tag. Without a tag it uses
+the latest non-draft, non-prerelease release; if the repository has no stable
+Release yet, it uses `onekvm.sh` from the checked-out commit.
 
 ## Local checks
 

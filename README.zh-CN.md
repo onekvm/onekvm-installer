@@ -22,27 +22,23 @@ NanoKVM Pro PCIe 目前不可用，因为仓库尚未包含对应的设备树和
 
 ## 在设备终端安装
 
-以 root 身份运行下面这一条命令；优先使用 `curl`，没有或失败时自动回退到
-`wget`：
+以 root 身份运行：
 
 ```sh
-(command -v curl >/dev/null 2>&1 && curl -fsSL https://onekvm.sh \
-  || wget -O - https://onekvm.sh) | sh
+(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sh
 ```
 
 当前 shell 不是 root 时，可以让管道右侧的 shell 使用 `sudo`：
 
 ```sh
-(command -v curl >/dev/null 2>&1 && curl -fsSL https://onekvm.sh \
-  || wget -O - https://onekvm.sh) | sudo sh
+(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sudo sh
 ```
 
 入口脚本会识别 `riscv64`、`arm64` 或 `amd64`，从 [GitHub latest Release](https://github.com/onekvm/onekvm-installer/releases/latest)
 下载匹配的软件包，并在启动安装器前校验 SHA-256。也可以在管道右侧指定镜像：
 
 ```sh
-(command -v curl >/dev/null 2>&1 && curl -fsSL https://onekvm.sh \
-  || wget -O - https://onekvm.sh) \
+(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh) \
   | ONEKVM_INSTALLER_RELEASE_URL=https://mirror.example/installer sh
 ```
 

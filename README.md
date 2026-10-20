@@ -25,19 +25,17 @@ matching SPL support; the installer checks this before writing.
 
 ## Install from a device shell
 
-Run this single command as root; it prefers `curl` and falls back to `wget`:
+Run as root:
 
 ```sh
-(command -v curl >/dev/null 2>&1 && curl -fsSL https://onekvm.sh \
-  || wget -O - https://onekvm.sh) | sh
+(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sh
 ```
 
 If the current shell is not root, run the shell on the right side of the pipe
 with `sudo`:
 
 ```sh
-(command -v curl >/dev/null 2>&1 && curl -fsSL https://onekvm.sh \
-  || wget -O - https://onekvm.sh) | sudo sh
+(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sudo sh
 ```
 
 The bootstrap script detects `riscv64`, `arm64`, or `amd64`, downloads the
@@ -46,8 +44,7 @@ and verifies its SHA-256 checksum before starting the installer. A mirror can
 be used by setting the variable on the shell side of the pipe:
 
 ```sh
-(command -v curl >/dev/null 2>&1 && curl -fsSL https://onekvm.sh \
-  || wget -O - https://onekvm.sh) \
+(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh) \
   | ONEKVM_INSTALLER_RELEASE_URL=https://mirror.example/installer sh
 ```
 

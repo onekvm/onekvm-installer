@@ -18,7 +18,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.x'
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            vendor/modules.txt
       - name: Resolve version
         id: version
         shell: bash

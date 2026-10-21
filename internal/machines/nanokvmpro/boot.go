@@ -2,6 +2,7 @@ package nanokvmpro
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -80,12 +81,20 @@ func bindProBootstrap(dir string, req installer.Request) error {
 	if _, err := hex.DecodeString(req.Token); err != nil {
 		return err
 	}
+	kernel, err := os.ReadFile(filepath.Join(dir, "Image"))
+	if err != nil {
+		return err
+	}
+	address, command, err := proKernelBoot(kernel)
+	if err != nil {
+		return err
+	}
 	var script strings.Builder
 	script.WriteString("mmc dev 0\nmmc rescan\n")
 	for _, entry := range []struct {
 		name, address string
 		offset, limit int64
-	}{{"Image", "0x41000000", 0, 32 * installer.MiB}, {"board.dtb", "0x47000000", 32 * installer.MiB, 8 * installer.MiB}, {"initramfs.uimg", "0x49000000", 40 * installer.MiB, proSelector - (proBackupKernel + 40*installer.MiB)}} {
+	}{{"Image", address, 0, 32 * installer.MiB}, {"board.dtb", "0x47000000", 32 * installer.MiB, 8 * installer.MiB}, {"initramfs.uimg", "0x49000000", 40 * installer.MiB, proSelector - (proBackupKernel + 40*installer.MiB)}} {
 		stat, err := os.Stat(filepath.Join(dir, entry.name))
 		if err != nil {
 			return err
@@ -96,7 +105,7 @@ func bindProBootstrap(dir string, req installer.Request) error {
 		fmt.Fprintf(&script, "mmc read %s 0x%x 0x%x\n", entry.address, (proBackupKernel+entry.offset)/512, (stat.Size()+511)/512)
 	}
 	fmt.Fprintf(&script, "setenv bootargs root=/dev/mmcblk0p17 rootwait ro console=ttyS0,115200 earlycon=uart8250,mmio32,0x04880000 clk_ignore_unused %s onekvm.installer=%s\n", proFactoryPartitions, req.Token)
-	script.WriteString("setenv initrd_high 0xffffffffffffffff\nbooti 0x41000000 0x49000000 0x47000000\n")
+	fmt.Fprintf(&script, "setenv initrd_high 0xffffffffffffffff\n%s %s 0x49000000 0x47000000\n", command, address)
 	payload, err := proScript(script.String())
 	if err != nil {
 		return err
@@ -223,9 +232,8 @@ func writeProRawFile(f interface {
 func validateBootstrapPayload(name string, p []byte) error {
 	switch name {
 	case "Image":
-		if len(p) < 64 || string(p[56:60]) != "ARM\x64" {
-			return fmt.Errorf("invalid ARM64 recovery kernel")
-		}
+		_, _, err := proKernelBoot(p)
+		return err
 	case "board.dtb":
 		if len(p) < 40 || binary.BigEndian.Uint32(p) != 0xd00dfeed || int(binary.BigEndian.Uint32(p[4:])) != len(p) {
 			return fmt.Errorf("invalid Pro recovery DTB")
@@ -242,6 +250,44 @@ func validateBootstrapPayload(name string, p []byte) error {
 		}
 	}
 	return nil
+}
+
+// Older images carry a raw Image; new images use a gzip legacy uImage.
+func proKernelBoot(p []byte) (address, command string, err error) {
+	invalid := func() (string, string, error) {
+		return "", "", fmt.Errorf("invalid ARM64 Pro recovery kernel")
+	}
+	if len(p) < 64 || len(p) > 32*installer.MiB {
+		return invalid()
+	}
+	if string(p[56:60]) == "ARM\x64" {
+		return "0x41000000", "booti", nil
+	}
+	if binary.BigEndian.Uint32(p) != 0x27051956 ||
+		int(binary.BigEndian.Uint32(p[12:])) != len(p)-64 ||
+		binary.BigEndian.Uint32(p[16:]) != 0x41000000 ||
+		binary.BigEndian.Uint32(p[20:]) != 0x41000000 ||
+		p[28] != 5 || p[29] != 22 || p[30] != 2 || p[31] != 1 {
+		return invalid()
+	}
+	header := bytes.Clone(p[:64])
+	want := binary.BigEndian.Uint32(header[4:])
+	clear(header[4:8])
+	if crc32.ChecksumIEEE(header) != want || crc32.ChecksumIEEE(p[64:]) != binary.BigEndian.Uint32(p[24:]) {
+		return invalid()
+	}
+	z, err := gzip.NewReader(bytes.NewReader(p[64:]))
+	if err != nil {
+		return invalid()
+	}
+	defer z.Close()
+	raw, err := io.ReadAll(io.LimitReader(z, 32*installer.MiB+1))
+	if err != nil || len(raw) < 64 || len(raw) > 32*installer.MiB ||
+		string(raw[56:60]) != "ARM\x64" || binary.LittleEndian.Uint64(raw[8:]) != 0 ||
+		binary.LittleEndian.Uint64(raw[16:]) == 0 || binary.LittleEndian.Uint64(raw[16:]) > 32*installer.MiB {
+		return invalid()
+	}
+	return "0x45000000", "bootm", nil
 }
 
 func (Machine) RecoverySteps() []string {

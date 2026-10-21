@@ -168,6 +168,9 @@ func TestProBootstrapScriptCRCsAndParser(t *testing.T) {
 	for _, name := range []string{"Image", "board.dtb", "initramfs.uimg"} {
 		put(t, dir, name, "payload")
 	}
+	if err := os.WriteFile(filepath.Join(dir, "Image"), proTestRawKernel(), 0600); err != nil {
+		t.Fatal(err)
+	}
 	req := installer.Request{Device: installer.Device{Profile: "pro-emmc"}, Token: strings.Repeat("a", 64)}
 	if err := bindProBootstrap(dir, req); err != nil {
 		t.Fatal(err)

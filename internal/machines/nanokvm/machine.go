@@ -24,9 +24,13 @@ func (Machine) Matches(root string) bool {
 	hw := installer.ReadTrim(p("etc/kvm/hw"))
 	one := installer.ReadTrim(p("usr/share/onekvm/machine"))
 	osRelease := installer.ReadTrim(p("etc/os-release"))
+	// Early NanoKVM Cube images predate the OneKVM identity files and may
+	// leave /etc/kvm/hw absent during Recovery.  The board's DT model is the
+	// stable hardware identity in that state.
+	legacyModel := strings.EqualFold(strings.TrimSpace(model), "LicheeRv Nano")
 	evidence := hw == "alpha" || hw == "beta" || hw == "pcie" || hw == "lite" ||
 		strings.Contains(one, "nanokvm") || strings.Contains(osRelease, "OneKVM") ||
-		strings.Contains(strings.ToLower(model), "nanokvm")
+		strings.Contains(strings.ToLower(model), "nanokvm") || legacyModel
 	return strings.Contains(compatible, "cvitek,cv181x") && evidence &&
 		!strings.Contains(strings.ToLower(compatible+model), "nanokvm-pro")
 }

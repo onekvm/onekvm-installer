@@ -63,6 +63,23 @@ func TestProbeUnknownBoard(t *testing.T) {
 		t.Fatal("treated a generic cv181x board as NanoKVM")
 	}
 }
+
+func TestProbeLegacyNanoKVMModelWithoutIdentityFiles(t *testing.T) {
+	r := vendorFixture(t)
+	if err := os.Remove(filepath.Join(r, "etc/kvm/hw")); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"usr/share/onekvm/machine", "etc/os-release"} {
+		if err := os.Remove(filepath.Join(r, path)); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+	d, err := Probe(r)
+	if err != nil || d.Profile != "nanokvm" {
+		t.Fatalf("legacy NanoKVM model was not recognized: %#v: %v", d, err)
+	}
+}
+
 func TestProbeAmbiguousUserdata(t *testing.T) {
 	r := vendorFixture(t)
 	b, _ := os.ReadFile(filepath.Join(r, "proc/mounts"))

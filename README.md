@@ -28,14 +28,14 @@ matching SPL support; the installer checks this before writing.
 Run as root:
 
 ```sh
-(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sh
+_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sh
 ```
 
 If the current shell is not root, run the shell on the right side of the pipe
 with `sudo`:
 
 ```sh
-(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sudo sh
+_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sudo sh
 ```
 
 The bootstrap script detects `riscv64` or `arm64`, downloads the
@@ -44,7 +44,7 @@ and verifies its SHA-256 checksum before starting the installer. A mirror can
 be used by setting the variable on the shell side of the pipe:
 
 ```sh
-(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh) \
+_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u") \
   | ONEKVM_INSTALLER_RELEASE_URL=https://mirror.example/installer sh
 ```
 
@@ -57,7 +57,7 @@ bootstrap script (`uname`, `mktemp`, `awk`, `sha256sum`, `tar`, `chmod`, and
 The wizard walks through these steps:
 
 1. Choose the interface language.
-2. Select a GitHub image or a local `.img` file.
+2. Select a GitHub image, an online HTTP(S) image URL, or a local `.img` file.
 3. Validate image metadata, profile, storage type, and SHA-256.
 4. Create the first administrator and choose the time zone.
 5. Copy or configure Ethernet and Wi-Fi settings independently.
@@ -89,6 +89,15 @@ following commands are read-only unless explicitly stated:
 ./onekvm-installer verify --image /data/OneKVM.img --profile nanokvm
 ./onekvm-installer solution --image /data/OneKVM.img
 ./onekvm-installer solution --image /data/OneKVM.img --json
+```
+
+The install and prepare commands also accept a direct HTTP(S) image URL. The
+installer downloads it into its temporary workspace, then applies the same
+metadata, profile, capacity, and SHA-256 checks as a local image:
+
+```sh
+./onekvm-installer install --url https://mirror.example/onekvm-nanokvm.img
+./onekvm-installer prepare --mirror https://mirror.example/onekvm-nanokvm.img
 ```
 
 `inspect`, `network`, `releases`, and `verify` print machine-readable JSON.

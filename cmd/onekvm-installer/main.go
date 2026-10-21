@@ -90,6 +90,8 @@ func execute(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.Usage = func() { _ = writeHelp(fs.Output(), tr, helpTarget) }
 	image := fs.String("image", "", tr.T("flag.image"))
+	remoteURL := fs.String("url", "", tr.T("flag.url"))
+	fs.StringVar(remoteURL, "mirror", "", tr.T("flag.url"))
 	tag := fs.String("tag", "", tr.T("flag.tag"))
 	catalogPath := fs.String("catalog", "", tr.T("flag.catalog"))
 	iface := fs.String("interface", "eth0", tr.T("flag.interface"))
@@ -115,6 +117,12 @@ func execute(ctx context.Context, args []string) error {
 	if *showVersion {
 		fmt.Println("onekvm-installer " + buildinfo.Version)
 		return nil
+	}
+	if *image != "" && *remoteURL != "" {
+		return fmt.Errorf("--image and --url cannot be used together")
+	}
+	if *remoteURL != "" && name != "install" && name != "prepare" {
+		return fmt.Errorf("--url is only supported by install and prepare")
 	}
 	if *jsonOutput && name != "solution" {
 		return fmt.Errorf("--json is only supported by solution")
@@ -278,7 +286,7 @@ func execute(ctx context.Context, args []string) error {
 			return fmt.Errorf("%s", tr.T("error.interface", *iface))
 		}
 	}
-	return ui.Run(ctx, ui.Options{Command: name, Image: *image, Tag: *tag, Interface: *iface, Device: d, Catalog: catalog, Text: tr})
+	return ui.Run(ctx, ui.Options{Command: name, Image: *image, URL: *remoteURL, Tag: *tag, Interface: *iface, Device: d, Catalog: catalog, Text: tr})
 }
 
 func main() {

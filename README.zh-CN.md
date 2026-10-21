@@ -25,20 +25,20 @@ NanoKVM Pro PCIe 目前不可用，因为仓库尚未包含对应的设备树和
 以 root 身份运行：
 
 ```sh
-(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sh
+_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sh
 ```
 
 当前 shell 不是 root 时，可以让管道右侧的 shell 使用 `sudo`：
 
 ```sh
-(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh)|sudo sh
+_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sudo sh
 ```
 
 入口脚本会识别 `riscv64` 或 `arm64`，从 [GitHub latest Release](https://github.com/onekvm/onekvm-installer/releases/latest)
 下载匹配的软件包，并在启动安装器前校验 SHA-256。也可以在管道右侧指定镜像：
 
 ```sh
-(curl -fsSL https://onekvm.sh||wget -qO- https://onekvm.sh) \
+_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u") \
   | ONEKVM_INSTALLER_RELEASE_URL=https://mirror.example/installer sh
 ```
 
@@ -51,7 +51,7 @@ NanoKVM Pro PCIe 目前不可用，因为仓库尚未包含对应的设备树和
 向导依次执行以下步骤：
 
 1. 选择界面语言。
-2. 选择 GitHub 镜像或本地 `.img` 文件。
+2. 选择 GitHub 镜像、HTTP(S) 在线镜像 URL 或本地 `.img` 文件。
 3. 校验镜像 metadata、profile、存储类型和 SHA-256。
 4. 创建首个管理员并选择时区。
 5. 分别复制或配置有线网络和 Wi-Fi。
@@ -79,6 +79,14 @@ NanoKVM 使用经过校验的 SD 卡布局和恢复引导。Pro Desk SD 直接�
 ./onekvm-installer verify --image /data/OneKVM.img --profile nanokvm
 ./onekvm-installer solution --image /data/OneKVM.img
 ./onekvm-installer solution --image /data/OneKVM.img --json
+```
+
+`install` 和 `prepare` 也支持直接传入 HTTP(S) 镜像 URL。安装器会先下载到临时空间，
+再按本地镜像相同的 metadata、机型、容量和 SHA-256 流程校验：
+
+```sh
+./onekvm-installer install --url https://mirror.example/onekvm-nanokvm.img
+./onekvm-installer prepare --mirror https://mirror.example/onekvm-nanokvm.img
 ```
 
 `inspect`、`network`、`releases` 和 `verify` 输出机器可读的 JSON。

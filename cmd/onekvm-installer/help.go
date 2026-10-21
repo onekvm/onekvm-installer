@@ -16,11 +16,11 @@ type commandHelp struct {
 }
 
 var commands = []commandHelp{
-	{"install", "[options]", []string{"image", "interface", "tag", "catalog"}, []string{
-		"onekvm-installer", "onekvm-installer install --image /data/OneKVM.img",
+	{"install", "[options]", []string{"image", "url", "interface", "tag", "catalog"}, []string{
+		"onekvm-installer", "onekvm-installer install --image /data/OneKVM.img", "onekvm-installer install --url https://mirror.example/onekvm.img",
 	}},
-	{"prepare", "[options]", []string{"image", "interface", "tag", "catalog"}, []string{
-		"onekvm-installer prepare --image /data/OneKVM.img", "onekvm-installer arm",
+	{"prepare", "[options]", []string{"image", "url", "interface", "tag", "catalog"}, []string{
+		"onekvm-installer prepare --image /data/OneKVM.img", "onekvm-installer prepare --url https://mirror.example/onekvm.img", "onekvm-installer arm",
 	}},
 	{"arm", "[options]", nil, []string{"onekvm-installer arm"}},
 	{"inspect", "[options]", nil, []string{"onekvm-installer inspect"}},
@@ -38,6 +38,7 @@ var commands = []commandHelp{
 
 var optionSyntax = map[string]string{
 	"image":     "--image PATH",
+	"url":       "--url URL, --mirror URL",
 	"interface": "--interface NAME",
 	"tag":       "--tag TAG",
 	"catalog":   "--catalog PATH",
@@ -80,7 +81,7 @@ func writeHelp(w io.Writer, tr i18n.Translator, command string) error {
 		for _, cmd := range commands[3:] {
 			row(cmd.name, t("cli.command."+cmd.name))
 		}
-		options = []string{"image", "interface", "tag", "catalog", "profile"}
+		options = []string{"image", "url", "interface", "tag", "catalog", "profile"}
 		examples = []string{
 			"onekvm-installer", "onekvm-installer --image /data/OneKVM.img", "onekvm-installer arm",
 		}

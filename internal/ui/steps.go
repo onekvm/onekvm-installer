@@ -24,7 +24,7 @@ type taskStep struct {
 func newTaskStatus(kind, label string, download bool) *taskStatus {
 	keys := []string{label}
 	switch kind {
-	case "download":
+	case "download", "remote-download":
 		keys = []string{"op.download", "op.verify"}
 	case "prepare", "prepare-downloaded":
 		keys = []string{"op.prepare", "op.cleanup"}

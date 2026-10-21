@@ -100,6 +100,8 @@ func (m *model) View() string {
 		}
 	case localPage:
 		title = t("local.title")
+	case remotePage:
+		title = t("remote.title")
 	case assetsPage:
 		title = t("assets.title")
 		hint = clean(m.opts.Catalog[d.Profile] + " · " + m.release.Tag)

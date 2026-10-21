@@ -108,6 +108,30 @@ func TestGitHubUsesLatestWithoutTagPrompt(t *testing.T) {
 	}
 }
 
+func TestOnlineImageDownloadsFromEnteredURLBeforeAccount(t *testing.T) {
+	m := testModel(t)
+	var gotURL string
+	m.deps.downloadURL = func(_ context.Context, _ installer.Device, rawURL string, image *installer.DownloadedImage, report installer.Reporter) error {
+		gotURL = rawURL
+		if err := report("op.download", func(installer.Progress) error { return nil }); err != nil {
+			return err
+		}
+		image.Source = "/data/online/image.img"
+		image.Image = installer.Image{Profile: "nanokvm", BuildID: "online-build"}
+		return report("op.verify", func(installer.Progress) error { return nil })
+	}
+	key(m, tea.KeyDown)
+	key(m, tea.KeyDown)
+	if cmd := key(m, tea.KeyEnter); cmd == nil || m.page != remotePage {
+		t.Fatalf("online source did not open URL form: page=%v cmd=%v", m.page, cmd != nil)
+	}
+	m.fields[0].input.SetValue("https://mirror.example/one.img")
+	runJobs(m, m.submitForm())
+	if gotURL != "https://mirror.example/one.img" || m.page != accountPage || m.image.BuildID != "online-build" {
+		t.Fatalf("online image did not use the verified URL: url=%q page=%v image=%+v", gotURL, m.page, m.image)
+	}
+}
+
 func TestPasswordsUseAsterisksAndNeverAppearInView(t *testing.T) {
 	m := testModel(t)
 	m.goPage(accountPage)

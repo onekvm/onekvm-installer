@@ -24,10 +24,10 @@ import (
 )
 
 type Options struct {
-	Command, Image, Tag, Interface string
-	Device                         installer.Device
-	Catalog                        installer.Catalog
-	Text                           i18n.Translator
+	Command, Image, URL, Tag, Interface string
+	Device                              installer.Device
+	Catalog                             installer.Catalog
+	Text                                i18n.Translator
 }
 
 type services struct {
@@ -39,6 +39,7 @@ type services struct {
 	arm               func(installer.Device, installer.Reporter) (installer.AccessInfo, error)
 	reboot            func() error
 	verify            func(context.Context, string, string, int64, installer.Progress) (installer.Image, error)
+	downloadURL       func(context.Context, installer.Device, string, *installer.DownloadedImage, installer.Reporter) error
 	prepared          func(installer.Device, installer.Progress) (installer.Request, error)
 	target            func(string, installer.Device, string) (installer.Device, error)
 	direct            func(context.Context, installer.Device, string, *installer.ReleaseAsset, []byte, installer.Reporter) (installer.AccessInfo, error)
@@ -50,7 +51,7 @@ type services struct {
 
 func defaults() services {
 	return services{fetch: installer.FetchRelease, network: installer.CopyEthernetNetwork, wifi: installer.CopyWiFi, static: installer.StaticNetwork, prepare: installer.Prepare,
-		arm: installer.Arm, reboot: delayedReboot, verify: installer.VerifyContext, prepared: installer.LoadPrepared, target: installer.ProbeTarget, direct: installer.InstallDirect,
+		arm: installer.Arm, reboot: delayedReboot, verify: installer.VerifyContext, downloadURL: installer.DownloadURL, prepared: installer.LoadPrepared, target: installer.ProbeTarget, direct: installer.InstallDirect,
 		download: installer.DownloadImage, prepareDownloaded: installer.PrepareDownloaded, check: installer.CheckSolutions, repair: installer.PrepareRepair}
 }
 
@@ -61,6 +62,7 @@ const (
 	languagePage
 	sourcePage
 	localPage
+	remotePage
 	assetsPage
 	accountPage
 	timezonePage
@@ -180,6 +182,7 @@ type model struct {
 	taskCancel    context.CancelFunc
 	exitAfterJob  bool
 	message       string
+	remoteURL     string
 	cancelled     bool
 	pulse         int
 	splash        splash
@@ -196,7 +199,7 @@ func newModel(ctx context.Context, opts Options, deps services) *model {
 	s := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(accent))
 	m := &model{opts: opts, deps: deps, ctx: ctx, spin: s,
 		bar:   progress.New(progress.WithSolidFill(brandBlue), progress.WithoutPercentage(), progress.WithColorProfile(lipgloss.ColorProfile())),
-		width: 78, height: 24, source: opts.Image, timezone: "UTC",
+		width: 78, height: 24, source: opts.Image, remoteURL: opts.URL, timezone: "UTC",
 		network: installer.Network{Interface: opts.Interface, Hostname: installer.CurrentHostname("/")}}
 	m.goPage(splashPage)
 	return m
@@ -222,7 +225,11 @@ func (m *model) startInstallationWizard() tea.Cmd {
 			return req, err
 		})
 	default:
-		if m.opts.Image != "" || m.opts.Command == "solution" {
+		if m.opts.Image != "" || m.opts.URL != "" || m.opts.Command == "solution" {
+			if m.opts.URL != "" {
+				m.goPage(remotePage)
+				return m.downloadRemoteImage()
+			}
 			m.goPage(localPage)
 			if m.source != "" {
 				return m.verifyLocalImage()
@@ -288,6 +295,8 @@ func (m *model) goPage(p page) {
 	switch p {
 	case localPage:
 		newField("local.path", m.source, false)
+	case remotePage:
+		newField("remote.url", m.remoteURL, false)
 	case accountPage:
 		name := m.username
 		if name == "" {
@@ -337,6 +346,7 @@ func (m *model) rebuildMenu(selected int) {
 	case sourcePage:
 		add("github", "source.github", "source.github.desc")
 		add("local", "source.local", "source.local.desc")
+		add("remote", "source.remote", "source.remote.desc")
 	case issuesPage:
 		for i, issue := range m.checks.Issues {
 			level := "issue.advisory"
@@ -420,7 +430,7 @@ func (m *model) begin(kind, label string, op func(context.Context, installer.Rep
 	if kind == "prepare" && m.downloaded != nil {
 		plan = "prepare-downloaded"
 	}
-	m.taskCancel, m.task = cancel, newTaskStatus(plan, label, m.asset != nil)
+	m.taskCancel, m.task = cancel, newTaskStatus(plan, label, m.asset != nil || kind == "remote-download")
 	if kind == "arm" {
 		if machine, err := installer.MachineFor(m.opts.Device.Profile); err == nil {
 			if plan, ok := machine.(interface{ RecoverySteps() []string }); ok {
@@ -572,6 +582,9 @@ func (m *model) back() tea.Cmd {
 			return m.exit()
 		}
 		m.goPage(sourcePage)
+	case remotePage:
+		m.closeDownload()
+		m.goPage(sourcePage)
 	case accountPage:
 		m.password = ""
 		m.closeDownload()
@@ -624,11 +637,13 @@ func (m *model) selectItem() tea.Cmd {
 	case sourcePage:
 		m.image = installer.Image{}
 		m.closeDownload()
-		if m.asset != nil {
-			m.source, m.asset = "", nil
-		}
+		m.source, m.remoteURL, m.asset = "", "", nil
 		if item.id == "local" {
 			m.goPage(localPage)
+			return textinput.Blink
+		}
+		if item.id == "remote" {
+			m.goPage(remotePage)
 			return textinput.Blink
 		}
 		repo := opts.Catalog[opts.Device.Profile]
@@ -769,6 +784,14 @@ func (m *model) submitForm() tea.Cmd {
 		}
 		m.source, m.asset = path, nil
 		return m.verifyLocalImage()
+	case remotePage:
+		remoteURL, err := installer.ValidateImageURL(value(0))
+		if err != nil {
+			m.error("error.url")
+			return nil
+		}
+		m.remoteURL, m.source, m.asset = remoteURL, "", nil
+		return m.downloadRemoteImage()
 	case accountPage:
 		if key := accountError(value(0), value(1), value(2)); key != "" {
 			m.error(key)
@@ -899,6 +922,10 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 			m.closeDownload()
 			m.goPage(assetsPage)
 			m.error("error.download", clean(r.err.Error()))
+		case "remote-download":
+			m.closeDownload()
+			m.goPage(remotePage)
+			m.error("error.download", clean(r.err.Error()))
 		case "verify":
 			m.goPage(localPage)
 			m.error("error.details", clean(r.err.Error()))
@@ -945,6 +972,15 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 		case "download":
 			m.source = m.downloaded.Source
 			m.image = m.downloaded.Image
+			return m.startChecks("account")
+		case "remote-download":
+			m.source = m.downloaded.Source
+			m.image = m.downloaded.Image
+			if !m.selectTarget(m.image.Profile) {
+				m.closeDownload()
+				m.goPage(remotePage)
+				return nil
+			}
 			return m.startChecks("account")
 		case "verify":
 			info := r.data.(installer.Image)
@@ -1030,6 +1066,16 @@ func (m *model) verifyLocalImage() tea.Cmd {
 		return info, err
 	})
 }
+
+func (m *model) downloadRemoteImage() tea.Cmd {
+	deps, target, remoteURL := m.deps, m.opts.Device, m.remoteURL
+	image := &installer.DownloadedImage{}
+	m.downloaded = image
+	return m.begin("remote-download", "op.download", func(ctx context.Context, report installer.Reporter) (any, error) {
+		return image, deps.downloadURL(ctx, target, remoteURL, image, report)
+	})
+}
+
 func (m *model) selectTarget(profile string) bool {
 	d, err := m.deps.target("/", m.opts.Device, profile)
 	if err == nil && m.opts.Command == "prepare" && installer.DirectInstall(d) {

@@ -45,7 +45,7 @@ func TestProKernelBootstrapFormats(t *testing.T) {
 	for _, compressed := range []bool{false, true} {
 		p, address, command := proTestRawKernel(), "0x41000000", "booti"
 		if compressed {
-			p, address, command = proTestCompressedKernel(t, p), "0x45000000", "bootm"
+			p, address, command = proTestCompressedKernel(t, p), "0x43000000", "bootm"
 		}
 		dir := t.TempDir()
 		for _, name := range []string{"board.dtb", "initramfs.uimg"} {

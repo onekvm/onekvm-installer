@@ -263,7 +263,7 @@ func proKernelBoot(p []byte) (address, command string, err error) {
 	if string(p[56:60]) == "ARM\x64" {
 		return "0x41000000", "booti", nil
 	}
-	if binary.BigEndian.Uint32(p) != 0x27051956 ||
+	if len(p) > 18*installer.MiB || binary.BigEndian.Uint32(p) != 0x27051956 ||
 		int(binary.BigEndian.Uint32(p[12:])) != len(p)-64 ||
 		binary.BigEndian.Uint32(p[16:]) != 0x41000000 ||
 		binary.BigEndian.Uint32(p[20:]) != 0x41000000 ||
@@ -287,7 +287,7 @@ func proKernelBoot(p []byte) (address, command string, err error) {
 		binary.LittleEndian.Uint64(raw[16:]) == 0 || binary.LittleEndian.Uint64(raw[16:]) > 32*installer.MiB {
 		return invalid()
 	}
-	return "0x45000000", "bootm", nil
+	return "0x43000000", "bootm", nil
 }
 
 func (Machine) RecoverySteps() []string {

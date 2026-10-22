@@ -9,6 +9,10 @@ import (
 	"github.com/onekvm/onekvm-installer/internal/installer"
 )
 
+// The bootstrap image and client must both include the matching OneKVM FIP.
+// Older clients must refuse this image before replacing any boot files.
+const bootstrapAPI = 3
+
 func extractBootstrap(image, dir string, progress installer.Progress) error {
 	r, err := os.Open(image)
 	if err != nil {
@@ -40,7 +44,7 @@ func extractBootstrap(image, dir string, progress installer.Progress) error {
 	if err != nil {
 		return err
 	}
-	if string(api) != fmt.Sprintf("%d\n", installer.RecoveryAPI) {
+	if string(api) != fmt.Sprintf("%d\n", bootstrapAPI) {
 		return fmt.Errorf("unsupported installation recovery API")
 	}
 	grow, err := installer.FatFile(f, "BOOTGROW   ", 16)
@@ -55,6 +59,13 @@ func extractBootstrap(image, dir string, progress installer.Progress) error {
 		return fmt.Errorf("bootstrap kernel is not a FIT image")
 	}
 	if err = installer.WritePrivate(dir+"/kernel.itb", kernel); err != nil {
+		return err
+	}
+	fip, err := installer.FatFile(f, "FIP     BIN", 2*installer.MiB)
+	if err != nil {
+		return err
+	}
+	if err = installer.WritePrivate(dir+"/fip.bin", fip); err != nil {
 		return err
 	}
 	env, err := installer.FatFile(f, "UENV    TXT", 16384)

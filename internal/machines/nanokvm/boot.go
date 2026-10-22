@@ -18,12 +18,10 @@ type bootstrapPlan struct {
 	requestBytes []byte
 	markerBytes  []byte
 	fipName      string
-	fipHash      string
 }
 
-// Check capacity after clearing the FAT, keeping the FIP required by the ROM.
-// Each new file is written once, then renamed; no second kernel or fixed 64 KiB
-// margin is needed. Round each file to FAT clusters and allow two spare clusters.
+// Keep the current FIP until its replacement has been synced and renamed.
+// Account for that peak allocation, rounding each file to FAT clusters.
 func bootstrapFits(total, cluster, fip int64, sizes ...int64) bool {
 	if cluster <= 0 || total <= 0 || fip <= 0 {
 		return false
@@ -80,10 +78,6 @@ func planBootstrap(d installer.Device, req installer.Request) (bootstrapPlan, er
 	if p.fipName == "" {
 		return p, fmt.Errorf("boot FIP is missing; refusing to clear boot files")
 	}
-	p.fipHash, err = installer.HashFile(filepath.Join(d.BootMount, p.fipName), nil)
-	if err != nil {
-		return p, err
-	}
 	p.request.State = "armed"
 	p.requestBytes, err = installer.JsonBytes(p.request)
 	if err != nil {
@@ -95,7 +89,7 @@ func planBootstrap(d installer.Device, req installer.Request) (bootstrapPlan, er
 		return p, err
 	}
 	var sizes []int64
-	for _, name := range []string{"kernel.itb", "uEnv.txt"} {
+	for _, name := range (Machine{}).BootstrapFiles() {
 		info, err := os.Lstat(filepath.Join(installer.StageDir(d), name))
 		if err != nil {
 			return p, err
@@ -154,8 +148,11 @@ func replaceBootstrap(p bootstrapPlan, report installer.Reporter) error {
 	}
 	return report("Installing recovery boot files (keep power connected)", func(progress installer.Progress) error {
 		files := []struct{ source, dest, hash string }{
-			{"kernel.itb", "boot.sd", req.KernelSHA256},
-			{"uEnv.txt", "uEnv.txt", req.EnvSHA256},
+			{"kernel.itb", "boot.sd", req.BootFiles["kernel.itb"]},
+			{"uEnv.txt", "uEnv.txt", req.BootFiles["uEnv.txt"]},
+			// Replace firmware last: Recovery must use the matching OneKVM
+			// bootloader, independently of the previously installed system.
+			{"fip.bin", p.fipName, req.BootFiles["fip.bin"]},
 		}
 		var total, offset int64
 		for _, file := range files {
@@ -189,14 +186,10 @@ func replaceBootstrap(p bootstrapPlan, report installer.Reporter) error {
 			}
 			offset += n
 		}
-		hash, err := installer.HashFile(filepath.Join(boot, p.fipName), nil)
-		if err != nil || hash != p.fipHash {
-			return incomplete(fmt.Errorf("boot FIP changed: %v", err))
-		}
 		if err := installer.WritePrivate(filepath.Join(dir, "request.json"), p.requestBytes); err != nil {
 			return incomplete(err)
 		}
-		// Publish only after both boot files have been synced and read back.
+		// Publish only after every boot file has been synced and read back.
 		if err := installer.WritePrivate(filepath.Join(boot, installer.MarkerName), p.markerBytes); err != nil {
 			return incomplete(err)
 		}
@@ -236,7 +229,7 @@ func writeBootstrapFile(source, dest string, progress installer.Progress) (int64
 	return n, err
 }
 
-func (Machine) BootstrapFiles() []string { return nil }
+func (Machine) BootstrapFiles() []string { return []string{"kernel.itb", "uEnv.txt", "fip.bin"} }
 func (Machine) PrepareBootstrap(dir string, req installer.Request) error {
 	path := filepath.Join(dir, "uEnv.txt")
 	env, err := os.ReadFile(path)

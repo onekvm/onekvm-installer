@@ -103,6 +103,10 @@ NanoKVM 使用经过校验的 SD 卡布局和恢复引导。Pro Desk SD 直接�
 交互式修复会先显示影响范围，并在写入固件前要求确认。使用
 `--lang auto|en|zh|zh-TW` 选择语言；`auto` 会跟随系统 locale。
 
+NanoKVM Recovery 使用已验证 OneKVM 镜像内配套的 FIP、内核和环境文件，覆盖旧引导
+后重启进入 Recovery，再从内存写入完整镜像。现有启动分区按所需文件的实际容量
+检查，不限制固定大小，也不依赖旧系统的引导配置。
+
 ## 开发
 
 项目需要 Go 1.23 或更高版本、`make` 和常见 Linux shell 工具。依赖已 vendored，

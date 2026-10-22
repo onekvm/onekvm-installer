@@ -12,7 +12,7 @@ import (
 )
 
 func TestExtractCompactBootstrap(t *testing.T) {
-	for _, invalid := range []string{"", "missing-marker", "size-mismatch"} {
+	for _, invalid := range []string{"", "missing-marker", "size-mismatch", "old-api"} {
 		t.Run(invalid, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "compact.img")
 			f, err := os.Create(path)
@@ -47,13 +47,17 @@ func TestExtractCompactBootstrap(t *testing.T) {
 				name string
 				data []byte
 			}{
-				{"INSTAPI    ", []byte(fmt.Sprintf("%d\n", installer.RecoveryAPI))},
+				{"INSTAPI    ", []byte(fmt.Sprintf("%d\n", bootstrapAPI))},
 				{"BOOTGROW   ", []byte("128\n")},
 				{"BOOT    SD ", kernel},
+				{"FIP     BIN", []byte("OneKVM boot firmware")},
 				{"UENV    TXT", []byte("bootfile=boot.sd\n")},
 			}
 			if invalid == "missing-marker" {
 				entries[1].name = "UNKNOWN    "
+			}
+			if invalid == "old-api" {
+				entries[0].data = []byte("2\n")
 			}
 			current := uint16(2)
 			for i, entry := range entries {
@@ -98,6 +102,9 @@ func TestExtractCompactBootstrap(t *testing.T) {
 			}
 			if _, err := os.Stat(filepath.Join(dir, "boot.fat")); !os.IsNotExist(err) {
 				t.Fatal("copied whole boot FAT")
+			}
+			if got, err := os.ReadFile(filepath.Join(dir, "fip.bin")); err != nil || string(got) != "OneKVM boot firmware" {
+				t.Fatal("did not extract matching boot firmware", err)
 			}
 		})
 	}

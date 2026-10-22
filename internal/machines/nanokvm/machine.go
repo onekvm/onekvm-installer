@@ -30,9 +30,15 @@ func (Machine) Matches(root string) bool {
 	legacyModel := strings.EqualFold(strings.TrimSpace(model), "LicheeRv Nano")
 	evidence := hw == "alpha" || hw == "beta" || hw == "pcie" || hw == "lite" ||
 		strings.Contains(one, "nanokvm") || strings.Contains(osRelease, "OneKVM") ||
-		strings.Contains(strings.ToLower(model), "nanokvm") || legacyModel
-	return strings.Contains(compatible, "cvitek,cv181x") && evidence &&
-		!strings.Contains(strings.ToLower(compatible+model), "nanokvm-pro")
+		strings.Contains(strings.ToLower(model), "nanokvm") || (legacyModel && hw == "")
+	sg200x := false
+	for _, value := range strings.Split(compatible, "\x00") {
+		if value == "cvitek,cv181x" || value == "sophgo,sg2002" {
+			sg200x = true
+		}
+	}
+	identity := strings.ToLower(compatible + model)
+	return sg200x && evidence && !strings.Contains(identity, "nanokvm-pro") && !strings.Contains(identity, "nanokvm pro")
 }
 
 func (m Machine) Probe(root string) (installer.Device, error) {
@@ -56,7 +62,9 @@ func (m Machine) ValidateTarget(d installer.Device) error {
 	if d.Profile != m.Profile() || !d.Automatic {
 		return fmt.Errorf("automatic bootstrap unavailable for %s: a verified persistent boot entry is required", d.Profile)
 	}
-	if d.BootStart != 1 || (d.BootSectors != 32768 && d.BootSectors != 65536 && d.BootSectors != 262144) {
+	// Recovery checks the actual FAT capacity against its kernel, environment
+	// and FIP replacement. The old partition need not match a stock image size.
+	if d.BootStart != 1 || d.BootSectors <= 0 || d.BootSectors > d.Bytes/512-d.BootStart {
 		return fmt.Errorf("unsupported SG200x boot geometry %d:%d", d.BootStart, d.BootSectors)
 	}
 	if (d.Userdata != d.Disk+"p3" && d.Userdata != d.Disk+"p4") ||
@@ -129,7 +137,7 @@ func (Machine) WritePayload(target io.ReadWriteSeeker, source io.Reader, info in
 
 func (Machine) Recover(report installer.Reporter) (bool, error) {
 	cmdline := installer.ReadTrim("/proc/cmdline")
-	if installer.ParentDisk(installer.CmdlineValue(cmdline, "root")) != "/dev/mmcblk0" || !strings.Contains(installer.ReadTrim("/proc/device-tree/compatible"), "cvitek,cv181x") {
+	if installer.ParentDisk(installer.CmdlineValue(cmdline, "root")) != "/dev/mmcblk0" || !(Machine{}).Matches("/") {
 		return false, nil
 	}
 	return installer.RecoverMMC("/dev/mmcblk0p1", report)

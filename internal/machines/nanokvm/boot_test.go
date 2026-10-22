@@ -13,15 +13,15 @@ import (
 )
 
 func TestBootstrapFitsStock16MiBFAT(t *testing.T) {
-	// Actual stock 172: 16 MiB partition, 2 KiB clusters, 440832-byte FIP,
-	// 16208716-byte recovery FIT. Keeping the FIP fits after clearing old files.
-	if !bootstrapFits(16334*1024, 2048, 440832, 16208716, 646, 1024) {
+	// A 16 MiB FAT with 2 KiB clusters must temporarily hold both FIPs.
+	if !bootstrapFits(16334*1024, 2048, 440832, 15*installer.MiB, 646, 440832, 1024) {
 		t.Fatal("rejected recovery that fits the stock 16 MiB FAT")
 	}
 	for _, tt := range []struct {
 		total, cluster, fip int64
 		sizes               []int64
 	}{
+		{16334 * 1024, 2048, 440832, []int64{16208716, 646, 440832, 1024}}, // Both FIPs exceed the available capacity.
 		{16334 * 1024, 2048, 440832, []int64{16 * installer.MiB, 646, 1024}},
 		{6 * 4096, 4096, 1, []int64{4097, 1, 1}}, // Per-file cluster rounding.
 		{100000, 0, 1, []int64{1}},
@@ -36,6 +36,7 @@ func TestBootstrapFitsStock16MiBFAT(t *testing.T) {
 func bootstrapFixture(t *testing.T) (installer.Device, installer.Request) {
 	t.Helper()
 	d := stagingDevice(t)
+	d.Profile = "nanokvm"
 	if err := os.Mkdir(installer.StageDir(d), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +47,7 @@ func bootstrapFixture(t *testing.T) (installer.Device, installer.Request) {
 	put(t, d.BootMount, "System Volume Information/old", "old metadata")
 	put(t, installer.StageDir(d), "kernel.itb", strings.Repeat("new kernel", 200000))
 	put(t, installer.StageDir(d), "uEnv.txt", "new environment")
+	put(t, installer.StageDir(d), "fip.bin", "OneKVM boot firmware")
 	put(t, installer.StageDir(d), "image.img", "image")
 	put(t, installer.StageDir(d), "firstboot.txt", "firstboot")
 	req := installer.Request{Version: installer.RecoveryAPI, Token: strings.Repeat("a", 64), State: "prepared", Device: d,
@@ -93,15 +95,15 @@ func TestReplaceBootstrapClearsOldFilesWithoutBackup(t *testing.T) {
 	if err != nil || len(entries) != 4 {
 		t.Fatal("expected only FIP, recovery kernel, environment and marker", entries, err)
 	}
-	for _, pair := range [][2]string{{"boot.sd", "kernel.itb"}, {"uEnv.txt", "uEnv.txt"}} {
+	for _, pair := range [][2]string{{"boot.sd", "kernel.itb"}, {"uEnv.txt", "uEnv.txt"}, {"fip.bin", "fip.bin"}} {
 		got, err := os.ReadFile(filepath.Join(d.BootMount, pair[0]))
 		want, readErr := os.ReadFile(filepath.Join(installer.StageDir(d), pair[1]))
 		if err != nil || readErr != nil || !bytes.Equal(got, want) {
 			t.Fatal("replacement boot file differs", pair, err, readErr)
 		}
 	}
-	if hash, err := installer.HashFile(filepath.Join(d.BootMount, "fip.bin"), nil); err != nil || hash != plan.fipHash {
-		t.Fatal("FIP changed", err)
+	if got, err := os.ReadFile(filepath.Join(d.BootMount, "fip.bin")); err != nil || string(got) != "OneKVM boot firmware" {
+		t.Fatal("did not replace the previous boot firmware", err)
 	}
 	if _, err := os.Stat(filepath.Join(installer.StageDir(d), "backup")); !os.IsNotExist(err) {
 		t.Fatal("old boot files were backed up", err)

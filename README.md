@@ -76,6 +76,12 @@ eMMC stages the image and reboots into recovery. The Pro SD path preserves the
 eMMC boot firmware and U-Boot environment. After installation, `/boot` is
 created with a 128 MiB layout.
 
+NanoKVM recovery uses the matching FIP, kernel and environment from the
+verified OneKVM image. It replaces the previous boot files before rebooting
+into recovery, then writes the complete image from RAM. The existing boot
+partition is checked against the required file capacity, without a fixed size
+list or assumptions about the previous system's boot configuration.
+
 ## Command-line inspection and diagnostics
 
 Running the binary without a command opens the interactive wizard. The

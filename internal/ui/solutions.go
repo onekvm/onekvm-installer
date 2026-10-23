@@ -14,7 +14,10 @@ import (
 	"github.com/onekvm/onekvm-installer/internal/installer"
 )
 
-type solutionView struct{ viewport viewport.Model }
+type solutionView struct {
+	viewport viewport.Model
+	focus    solutionFocus
+}
 
 func (m *model) startChecks(next string) tea.Cmd {
 	m.checkNext = next
@@ -73,12 +76,28 @@ func (m *model) selectIssue(id string) tea.Cmd {
 			m.goPage(sourcePage)
 		}
 	default:
+		if id, ok := strings.CutPrefix(id, "repair:"); ok {
+			issue, valid := m.activeSolutionIssue()
+			if !valid {
+				return nil
+			}
+			for _, solution := range issue.Solutions {
+				if id != "" && solution.RepairID == id {
+					in, deps := m.checkContext(), m.deps
+					return m.begin("repair-prepare", "op.repair_prepare", func(ctx context.Context, _ installer.Reporter) (any, error) {
+						return deps.repair(ctx, in, id)
+					})
+				}
+			}
+			return nil
+		}
 		index, err := strconv.Atoi(id)
-		if err == nil && index >= 0 && index < len(m.checks.Issues) {
-			m.solutionIndex = index
-			m.goPage(solutionPage)
-			m.solutionView.viewport = viewport.New(1, 1)
-			m.resizeSolution()
+		if err == nil && index >= 0 && index < m.solutionFindingCount() {
+			if !m.solutionWorkspace() {
+				m.goPage(issuesPage)
+			}
+			m.chooseSolutionIssue(index)
+			m.solutionView.focus = solutionDetails
 		}
 	}
 	return nil
@@ -89,73 +108,21 @@ func (m *model) solutionHeader() string {
 }
 
 func (m *model) resizeSolution() {
-	issue := m.checks.Issues[m.solutionIndex]
-	t := m.opts.Text.T
-	width := max(12, m.width-4)
-	wrap := lipgloss.NewStyle().Width(width)
-	titleKey := issue.TitleKey
-	if m.page == repairConfirmPage {
-		titleKey = "repair.review"
+	if m.solutionView.viewport.Width == 0 {
+		m.solutionView.viewport = viewport.New(1, 1)
 	}
-	title := wrap.Bold(true).Render(t(titleKey))
-	help := wrap.Render(t("solutions.help"))
-	m.solutionView.viewport.Width = width
-	m.solutionView.viewport.Height = max(1, m.height-lipgloss.Height(m.solutionHeader())-lipgloss.Height(title)-lipgloss.Height(help)-lipgloss.Height(m.menu.View())-10)
-	content := t(issue.DescriptionKey)
-	for _, solution := range issue.Solutions {
-		content += "\n\n" + t(solution.TitleKey) + "\n" + t(solution.BodyKey)
-	}
-	if m.page == repairConfirmPage && m.repairPlan != nil {
-		content = t(m.repairPlan.SummaryKey)
-		for _, fact := range m.repairPlan.Facts {
-			content += "\n\n" + t(fact.LabelKey) + ": " + fact.Value
-		}
-	}
-	content = wrap.Render(content)
-	offset := m.solutionView.viewport.YOffset
-	m.solutionView.viewport.SetContent(content)
-	m.solutionView.viewport.SetYOffset(offset)
+	layout := m.solutionLayout()
+	v := &m.solutionView.viewport
+	v.Width, v.Height = layout.detailWidth, layout.detailHeight
+	offset := v.YOffset
+	v.SetContent(lipgloss.NewStyle().Width(v.Width).Render(m.solutionContent()))
+	v.SetYOffset(offset)
 }
 
 func (m *model) solutionsView() string {
-	t := m.opts.Text.T
-	width := max(12, m.width-4)
-	wrap := lipgloss.NewStyle().Width(width)
-	blocks := []string{m.solutionHeader()}
-	if m.page == solutionPage || m.page == repairConfirmPage {
-		issue := m.checks.Issues[m.solutionIndex]
-		title := t(issue.TitleKey)
-		if m.page == repairConfirmPage {
-			title = t("repair.review")
-		}
-		blocks = append(blocks, wrap.Bold(true).Render(title), m.solutionView.viewport.View())
-		if m.errKey != "" {
-			blocks = append(blocks, danger.Render(wrap.Render(t(m.errKey, m.errArgs...))))
-		}
-		blocks = append(blocks, m.menu.View(), muted.Render(wrap.Render(t("solutions.help"))))
-	} else if m.page == repairDonePage {
-		message := t("repair.done")
-		if m.repairErr != nil {
-			message = t("repair.failed") + "\n" + clean(m.repairErr.Error())
-		}
-		blocks = append(blocks, wrap.Bold(true).Render(t("solutions.title")), wrap.Render(message), m.menu.View(), muted.Render(t("help.menu")))
-	} else {
-		blocks = append(blocks, wrap.Bold(true).Render(t("solutions.title")))
-		message := "solutions.found"
-		switch {
-		case m.checkErr != nil:
-			blocks = append(blocks, danger.Render(wrap.Render(t("solutions.check_failed")+"\n"+clean(m.opts.Text.Diagnostic(m.checkErr.Error())))))
-			message = "solutions.check_failed.note"
-		case m.checks.Blocking():
-			message = "solutions.blocked"
-		case len(m.checks.Issues) == 0 && m.checks.Supported:
-			message = "solutions.clear"
-		case len(m.checks.Issues) == 0:
-			message = "solutions.unsupported"
-		}
-		blocks = append(blocks, muted.Render(wrap.Render(t(message))), m.menu.View(), muted.Render(t("help.menu")))
-	}
-	return lipgloss.NewStyle().Width(width).Margin(1, 2).Render(strings.Join(blocks, "\n\n"))
+	layout := m.solutionLayout()
+	body := m.solutionBody(layout)
+	return lipgloss.NewStyle().Margin(1, 2).Render(layout.header + "\n" + body + "\n" + layout.footer)
 }
 
 // Plain output is useful for a diagnostic command over SSH without a TTY.

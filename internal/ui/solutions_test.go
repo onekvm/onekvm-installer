@@ -93,12 +93,15 @@ func TestBlockingIssueCannotBeBypassedAndRechecksBeforeConfirmation(t *testing.T
 		t.Fatal("hidden action bypassed blocker")
 	}
 	m.selectIssue("0")
-	if m.page != solutionPage {
-		t.Fatal("could not view solution")
+	if m.page != issuesPage || m.solutionView.focus != solutionDetails {
+		t.Fatal("could not focus the inline solution")
 	}
 	key(m, tea.KeyEnter)
 	if m.page != issuesPage {
 		t.Fatal("viewing guidance bypassed blocker")
+	}
+	if cmd := key(m, tea.KeyEsc); cmd != nil || m.solutionView.focus != solutionIssues {
+		t.Fatal("escape did not return focus to the issue list")
 	}
 	if !isQuit(key(m, tea.KeyEsc)) {
 		t.Fatal("escape bypassed blocker instead of exiting")
@@ -221,12 +224,13 @@ func TestRepairRequiresSeparateConfirmationAndRechecksAfterwards(t *testing.T) {
 		return installer.CheckResult{Supported: true}, nil
 	}
 	m.selectIssue("0")
+	key(m, tea.KeyEnter) // Move from the guide to its separate action bar.
 	m.Update(key(m, tea.KeyEnter)())
 	if m.page != repairConfirmPage || prepared != 1 || writes != 0 {
 		t.Fatal("repair wrote before confirmation")
 	}
 	key(m, tea.KeyEnter) // Back is the safe default.
-	if m.page != solutionPage || writes != 0 {
+	if m.page != issuesPage || writes != 0 {
 		t.Fatal("default review action wrote firmware")
 	}
 	m.Update(key(m, tea.KeyEnter)())

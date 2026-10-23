@@ -70,7 +70,7 @@ func (m *model) View() string {
 	if m.page == splashPage {
 		return m.splash.view(m.width, m.height)
 	}
-	if m.page == issuesPage || m.page == solutionPage || m.page == repairConfirmPage || m.page == repairDonePage {
+	if solutionScreen(m.page) {
 		return m.solutionsView()
 	}
 	t := m.opts.Text.T

@@ -79,7 +79,6 @@ const (
 	finishedPage
 	failedPage
 	issuesPage
-	solutionPage
 	repairConfirmPage
 	repairDonePage
 )
@@ -251,7 +250,7 @@ func Run(ctx context.Context, opts Options) error {
 		cancel()
 		m.closeDownload()
 	}()
-	result, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithoutSignalHandler()).Run()
+	result, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithoutSignalHandler()).Run()
 	if err != nil {
 		return err
 	}
@@ -323,7 +322,15 @@ func (m *model) goPage(p page) {
 	if len(m.fields) > 0 {
 		m.fields[0].input.Focus()
 	}
+	if solutionScreen(p) {
+		m.solutionIndex = max(0, min(m.solutionIndex, m.solutionFindingCount()-1))
+	}
 	m.rebuildMenu(0)
+	if solutionScreen(p) {
+		m.solutionView.focus = solutionActions
+		m.solutionView.viewport.GotoTop()
+		m.resizeSolution()
+	}
 	if p == languagePage {
 		for i, item := range m.menu.Items() {
 			if item.(menuItem).id == m.opts.Text.Language {
@@ -348,12 +355,20 @@ func (m *model) rebuildMenu(selected int) {
 		add("local", "source.local", "source.local.desc")
 		add("remote", "source.remote", "source.remote.desc")
 	case issuesPage:
-		for i, issue := range m.checks.Issues {
-			level := "issue.advisory"
-			if issue.Blocking {
-				level = "issue.blocking"
+		if issue, ok := m.activeSolutionIssue(); ok {
+			var repairs []installer.Solution
+			for _, solution := range issue.Solutions {
+				if solution.RepairID != "" {
+					repairs = append(repairs, solution)
+				}
 			}
-			items = append(items, menuItem{fmt.Sprint(i), t(issue.TitleKey), t(level)})
+			for _, solution := range repairs {
+				title := t("solutions.repair.preview")
+				if len(repairs) > 1 {
+					title = t(solution.TitleKey)
+				}
+				items = append(items, menuItem{"repair:" + solution.RepairID, title, t(solution.TitleKey) + " · " + t("solutions.repair.preview.desc")})
+			}
 		}
 		add("recheck", "solutions.recheck", "solutions.recheck.desc")
 		if m.opts.Command != "solution" && m.checkErr == nil && !m.checks.Blocking() {
@@ -363,13 +378,6 @@ func (m *model) rebuildMenu(selected int) {
 			add("change-image", "solutions.change_image", "solutions.change_image.desc")
 		}
 		add("exit", "solutions.exit", "solutions.exit.desc")
-	case solutionPage:
-		for _, solution := range m.checks.Issues[m.solutionIndex].Solutions {
-			if solution.RepairID != "" {
-				items = append(items, menuItem{"repair:" + solution.RepairID, t("repair.action", t(solution.TitleKey)), t("repair.action.desc")})
-			}
-		}
-		add("back", "action.back", "solutions.back.desc")
 	case repairConfirmPage:
 		add("back", "action.back", "repair.back.desc")
 		add("apply", "repair.confirm", "repair.confirm.desc")
@@ -492,8 +500,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.fields {
 			m.fields[i].input.Width = min(64, max(1, m.width-10))
 		}
-		if m.page == solutionPage || m.page == repairConfirmPage {
+		if solutionScreen(m.page) {
 			m.resizeSolution()
+		}
+	case tea.MouseMsg:
+		if solutionScreen(m.page) {
+			return m, m.updateSolutionMouse(msg)
 		}
 	case interrupted:
 		return m, m.exit()
@@ -510,6 +522,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.exit()
 			}
 			return m, nil
+		}
+		if solutionScreen(m.page) {
+			return m, m.updateSolutionKey(msg)
 		}
 		switch msg.String() {
 		case "ctrl+c":
@@ -537,13 +552,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	if m.page == solutionPage || m.page == repairConfirmPage {
-		if key, ok := msg.(tea.KeyMsg); ok && (key.Type == tea.KeyPgUp || key.Type == tea.KeyPgDown || key.Type == tea.KeyHome || key.Type == tea.KeyEnd) {
-			var cmd tea.Cmd
-			m.solutionView.viewport, cmd = m.solutionView.viewport.Update(msg)
-			return m, cmd
-		}
-	}
 	if len(m.fields) > 0 {
 		var cmd tea.Cmd
 		m.fields[m.focus].input, cmd = m.fields[m.focus].input.Update(msg)
@@ -569,12 +577,9 @@ func (m *model) back() tea.Cmd {
 	case issuesPage:
 		// Escape must never bypass a blocking check.
 		return m.exit()
-	case solutionPage:
-		m.goPage(issuesPage)
 	case repairConfirmPage:
 		m.repairPlan = nil
-		m.goPage(solutionPage)
-		m.resizeSolution()
+		m.goPage(issuesPage)
 	case repairDonePage:
 		return m.startChecks(m.checkNext)
 	case localPage, assetsPage:
@@ -736,17 +741,6 @@ func (m *model) selectItem() tea.Cmd {
 		return m.startChecks("confirm")
 	case issuesPage:
 		return m.selectIssue(item.id)
-	case solutionPage:
-		if item.id == "back" {
-			m.goPage(issuesPage)
-			return nil
-		}
-		if id, ok := strings.CutPrefix(item.id, "repair:"); ok {
-			in := m.checkContext()
-			return m.begin("repair-prepare", "op.repair_prepare", func(ctx context.Context, _ installer.Reporter) (any, error) {
-				return deps.repair(ctx, in, id)
-			})
-		}
 	case repairConfirmPage:
 		if item.id == "back" {
 			return m.back()
@@ -905,7 +899,7 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 	if r.err != nil {
 		switch r.kind {
 		case "repair-prepare":
-			m.goPage(solutionPage)
+			m.goPage(issuesPage)
 			m.error("error.details", clean(r.err.Error()))
 			m.resizeSolution()
 		case "repair-apply":

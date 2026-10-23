@@ -168,8 +168,14 @@ func checkSDFirmware(ctx context.Context, in installer.CheckContext) error {
 			"0e00f8e4b9d612cd19eb6bea7387de7f237473ee4fc038d341ca02340107b6f6",
 			// Same SD boot contract, with the OneKVM JD9853 boot artwork.
 			"066092a33e9498912a89837d2ca75ba2f441a2b4b834e9a764eae9823888b634",
+			// OE-built SDK f10976c, packaged by SDK 354956c.
+			"ee08e4c5c308f2e80749af2280a8d70662f982a339e7ff4370ce951c60fa5b74",
 		},
-		"atf.img": {"2b010615206d967f036f05f76fa2aa4bf6f884e3dac9c46cbc39dd0f96013390"},
+		"atf.img": {
+			"2b010615206d967f036f05f76fa2aa4bf6f884e3dac9c46cbc39dd0f96013390",
+			// OE-built AX620E/AX630C SD BL31, without OP-TEE.
+			"6cc10ba7f74db302fed81ea25a4e0419c84f6138b06fa9025257858a22f83de3",
+		},
 	} {
 		data, err := installer.FatFile(boot, file, 2*installer.MiB)
 		if err != nil || !slices.Contains(expected, digest(data)) {

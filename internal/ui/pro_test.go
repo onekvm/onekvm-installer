@@ -3,11 +3,13 @@ package ui
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/onekvm/onekvm-installer/internal/i18n"
 	"github.com/onekvm/onekvm-installer/internal/installer"
 )
 
@@ -135,6 +137,64 @@ func TestProLocalImageMetadataSelectsEMMCAndMissingSDIsRecoverable(t *testing.T)
 		t.Fatal("missing SD target was accepted")
 	}
 }
+
+func TestProOnlineImageMissingSDIsVisibleAndRetryable(t *testing.T) {
+	for _, language := range []string{"en", "zh", "zh-TW"} {
+		t.Run(language, func(t *testing.T) {
+			m := proModel(t)
+			m.opts.Text, _ = i18n.New(language, os.Getenv)
+			const imageURL = "https://mirror.example/onekvm-nanokvm-pro-sd.img"
+			const missingSD = "insert an SD card before selecting a Pro SD image"
+			original, target := m.opts.Device, m.deps.target
+			inserted, downloads, checks := false, 0, 0
+			m.deps.target = func(root string, d installer.Device, profile string) (installer.Device, error) {
+				if profile != "pro-sd" {
+					t.Fatal("downloaded metadata did not select the SD target")
+				}
+				if !inserted {
+					return installer.Device{}, errors.New(missingSD)
+				}
+				return target(root, d, profile)
+			}
+			m.deps.downloadURL = func(_ context.Context, _ installer.Device, rawURL string, image *installer.DownloadedImage, _ installer.Reporter) error {
+				downloads++
+				if rawURL != imageURL {
+					t.Fatal("retry lost the selected URL", rawURL)
+				}
+				image.Source = "/run/onekvm-test/image.img"
+				image.Image = installer.Image{Profile: "pro-sd"}
+				return nil
+			}
+			m.deps.check = func(_ context.Context, in installer.CheckContext) (installer.CheckResult, error) {
+				checks++
+				if !inserted || in.Target.Profile != "pro-sd" || in.Image.Profile != "pro-sd" {
+					t.Fatal("unavailable SD target reached solution checks")
+				}
+				return installer.CheckResult{}, nil
+			}
+			m.goPage(remotePage)
+			m.fields[0].input.SetValue(imageURL)
+			runJobs(m, m.submitForm())
+			if m.page != remotePage || m.errKey == "" || checks != 0 || m.downloaded != nil || m.opts.Device != original {
+				t.Fatal("missing SD did not return a recoverable target error", m.page, m.errKey, checks)
+			}
+			view := strings.Join(strings.Fields(ansi.Strip(m.View())), "")
+			diagnostic := strings.Join(strings.Fields(m.opts.Text.T("diagnostic.sd_missing")), "")
+			if !strings.Contains(view, diagnostic) {
+				t.Fatal("missing SD diagnostic is not visible in the selected language", ansi.Strip(m.View()))
+			}
+			if m.fields[0].input.Value() != imageURL {
+				t.Fatal("missing SD error cleared the URL")
+			}
+			inserted = true
+			runJobs(m, m.submitForm())
+			if downloads != 2 || checks != 1 || m.page != accountPage || m.errKey != "" || m.opts.Device.Disk != "/dev/mmcblk1" {
+				t.Fatal("inserting an SD card did not allow retrying the same URL", downloads, checks, m.page)
+			}
+		})
+	}
+}
+
 func TestDirectWriteCancellationBoundary(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

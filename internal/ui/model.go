@@ -970,9 +970,9 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 		case "remote-download":
 			m.source = m.downloaded.Source
 			m.image = m.downloaded.Image
+			m.goPage(remotePage)
 			if !m.selectTarget(m.image.Profile) {
 				m.closeDownload()
-				m.goPage(remotePage)
 				return nil
 			}
 			return m.startChecks("account")

@@ -31,7 +31,7 @@ type fixture struct {
 	manifest string
 }
 
-func newFixture(t *testing.T, machine, downloader string) *fixture {
+func newFixture(t *testing.T, machine string) *fixture {
 	t.Helper()
 	f := &fixture{files: make(map[string][]byte)}
 	for _, arch := range []string{"riscv64", "arm64"} {
@@ -64,7 +64,7 @@ func newFixture(t *testing.T, machine, downloader string) *fixture {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"mktemp", "awk", "sha256sum", "chmod", "rm", downloader} {
+	for _, name := range []string{"mktemp", "awk", "sha256sum", "chmod", "rm", "curl"} {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			t.Fatalf("test dependency %s: %v", name, err)
@@ -120,7 +120,7 @@ func TestBootstrapArchitectures(t *testing.T) {
 		"riscv64": "riscv64", "aarch64": "arm64", "arm64": "arm64",
 	} {
 		t.Run(machine, func(t *testing.T) {
-			f := newFixture(t, machine, "curl")
+			f := newFixture(t, machine)
 			out, status := f.Run(t, []string{"sh"}, "--image", "/data/an image $(literal).img")
 			if status != 0 || !strings.Contains(out, "Linux "+arch) ||
 				!strings.Contains(out, "arg=</data/an image $(literal).img>") {
@@ -140,7 +140,7 @@ func TestBootstrapRejectsInvalidRelease(t *testing.T) {
 			if test == "unsupported architecture" {
 				machine = "armv7l"
 			}
-			f := newFixture(t, machine, "curl")
+			f := newFixture(t, machine)
 			const name = "/onekvm-installer-0.1.0-linux-riscv64"
 			f.mu.Lock()
 			switch test {
@@ -167,8 +167,8 @@ func TestBootstrapRejectsInvalidRelease(t *testing.T) {
 	}
 }
 
-func TestBootstrapWgetAndExitStatus(t *testing.T) {
-	f := newFixture(t, "riscv64", "wget")
+func TestBootstrapExitStatus(t *testing.T) {
+	f := newFixture(t, "riscv64")
 	f.env = append(f.env, "ONEKVM_TEST_EXIT=42")
 	out, status := f.Run(t, []string{"sh"}, "--version")
 	if status != 42 || !strings.Contains(out, "arg=<--version>") {

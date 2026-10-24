@@ -3,7 +3,7 @@
 This Cloudflare Worker serves the `onekvm.sh` bootstrap script from the latest
 published installer Release:
 
-- requests whose `User-Agent` contains `curl` or `wget` receive the script;
+- requests whose `User-Agent` contains `curl` receive the script;
 - every other User-Agent receives `301 https://github.com/onekvm`;
 - a missing embedded script returns `503` instead of serving an incomplete
   installer.

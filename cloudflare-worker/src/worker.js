@@ -4,7 +4,7 @@ import {
 } from "./installer-script.js";
 
 const REDIRECT_URL = "https://github.com/onekvm";
-const COMMAND_LINE_USER_AGENT = /\b(?:curl|wget)(?:\/|\b)/i;
+const COMMAND_LINE_USER_AGENT = /\bcurl(?:\/|\b)/i;
 const SCRIPT_CACHE_CONTROL =
   "public, max-age=300, s-maxage=31536000, immutable";
 

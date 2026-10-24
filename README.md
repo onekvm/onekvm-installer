@@ -28,27 +28,37 @@ matching SPL support; the installer checks this before writing.
 Run as root:
 
 ```sh
-_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sh
+curl -fsSL https://onekvm.sh | sh
 ```
 
 If the current shell is not root, run the shell on the right side of the pipe
 with `sudo`:
 
 ```sh
-_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sudo sh
+curl -fsSL https://onekvm.sh | sudo sh
 ```
 
 The bootstrap script detects `riscv64` or `arm64`, downloads the
 matching package from the [latest GitHub Release](https://github.com/onekvm/onekvm-installer/releases/latest),
-and verifies its SHA-256 checksum before starting the installer. A mirror can
-be used by setting the variable on the shell side of the pipe:
+and verifies its SHA-256 checksum before starting the installer.
+
+To install from an image URL, pass installer arguments after `sh -s --`:
 
 ```sh
-_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u") \
+curl -fsSL https://onekvm.sh \
+  | sh -s -- install --url 'https://mirror.example/onekvm-nanokvm.img'
+```
+
+For a non-root shell, use `sudo sh -s -- install --url 'https://…'` on the
+right side of the pipe. To mirror the installer package itself, set the
+variable on the shell side of the pipe:
+
+```sh
+curl -fsSL https://onekvm.sh \
   | ONEKVM_INSTALLER_RELEASE_URL=https://mirror.example/installer sh
 ```
 
-The device needs Linux, `curl` or `wget`, and the common commands used by the
+The device needs Linux, `curl`, and the common commands used by the
 bootstrap script (`uname`, `mktemp`, `awk`, `sha256sum`, `tar`, `chmod`, and
 `rm`). Installation itself must run as root.
 
@@ -159,7 +169,7 @@ containing Linux `riscv64` and `arm64` executables, a separate
 
 The release workflow can also deploy the optional Cloudflare Worker in
 [`cloudflare-worker`](cloudflare-worker/README.md). It embeds the verified
-`onekvm.sh` asset from each published Release, serves it to `curl` and `wget`,
+`onekvm.sh` asset from each published Release, serves it to `curl`,
 and redirects other user agents to the project page.
 
 ## License

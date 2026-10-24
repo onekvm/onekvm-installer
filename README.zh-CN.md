@@ -25,24 +25,34 @@ NanoKVM Pro PCIe 目前不可用，因为仓库尚未包含对应的设备树和
 以 root 身份运行：
 
 ```sh
-_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sh
+curl -fsSL https://onekvm.sh | sh
 ```
 
 当前 shell 不是 root 时，可以让管道右侧的 shell 使用 `sudo`：
 
 ```sh
-_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u")|sudo sh
+curl -fsSL https://onekvm.sh | sudo sh
 ```
 
 入口脚本会识别 `riscv64` 或 `arm64`，从 [GitHub latest Release](https://github.com/onekvm/onekvm-installer/releases/latest)
-下载匹配的软件包，并在启动安装器前校验 SHA-256。也可以在管道右侧指定镜像：
+下载匹配的软件包，并在启动安装器前校验 SHA-256。
+
+已有系统镜像 URL 时，把安装器参数放在 `sh -s --` 后面：
 
 ```sh
-_u=https://onekvm.sh;(curl -fsSL "$_u"||wget -qO- "$_u") \
+curl -fsSL https://onekvm.sh \
+  | sh -s -- install --url 'https://mirror.example/onekvm-nanokvm.img'
+```
+
+当前 shell 不是 root 时，管道右侧使用 `sudo sh -s -- install --url 'https://…'`。
+如果要更换安装器软件包本身的下载源，可以在管道右侧设置环境变量：
+
+```sh
+curl -fsSL https://onekvm.sh \
   | ONEKVM_INSTALLER_RELEASE_URL=https://mirror.example/installer sh
 ```
 
-设备需要 Linux、`curl` 或 `wget`，以及入口脚本使用的常见命令
+设备需要 Linux、`curl`，以及入口脚本使用的常见命令
 （`uname`、`mktemp`、`awk`、`sha256sum`、`tar`、`chmod` 和 `rm`）。实际安装
 必须以 root 身份运行。
 
@@ -142,7 +152,7 @@ GitHub Actions 会在分支更新和 PR 时运行检查并打包。推送与
 
 仓库还提供可选的 [Cloudflare Worker](cloudflare-worker/README.md)。每次
 Release 发布后，工作流会校验并将该 Release 中的 `onekvm.sh` 嵌入 Worker；
-`curl` 和 `wget` 会收到脚本，其他 User-Agent 会被 301 重定向到项目主页。
+`curl` 会收到脚本，其他 User-Agent 会被 301 重定向到项目主页。
 
 ## 许可证
 

@@ -9,13 +9,8 @@ fail() {
 }
 
 download() {
-    if [ "$downloader" = curl ]; then
-        curl --fail --location --show-error --progress-bar --retry 2 \
-            --connect-timeout 15 --max-time 300 --output "$2" "$1"
-    else
-        # These options also work with the factory system's BusyBox wget.
-        wget -T 30 -O "$2" "$1"
-    fi
+    curl --fail --location --show-error --progress-bar --retry 2 \
+        --connect-timeout 15 --max-time 300 --output "$2" "$1"
 }
 
 cleanup() {
@@ -38,13 +33,7 @@ main() {
         *) fail "Unsupported architecture: $machine (supported: riscv64, arm64)" ;;
     esac
 
-    if command -v curl >/dev/null 2>&1; then
-        downloader=curl
-    elif command -v wget >/dev/null 2>&1; then
-        downloader=wget
-    else
-        fail 'Install curl or wget, then try again.'
-    fi
+    command -v curl >/dev/null 2>&1 || fail 'Install curl, then try again.'
 
     repository=${ONEKVM_INSTALLER_REPOSITORY:-onekvm/onekvm-installer}
     release_url=${ONEKVM_INSTALLER_RELEASE_URL:-https://github.com/$repository/releases/latest/download}

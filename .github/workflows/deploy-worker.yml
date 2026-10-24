@@ -63,6 +63,8 @@ jobs:
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
               --pattern onekvm.sh --pattern SHA256SUMS \
               --dir .worker-release
+            printf 'https://github.com/%s/releases/download/%s\n' "$GITHUB_REPOSITORY" "$tag" \
+              > .worker-release/release-url
             grep -E '  (\./)?onekvm\.sh$' .worker-release/SHA256SUMS \
               > .worker-release/onekvm.sha256
             (cd .worker-release && sha256sum -c onekvm.sha256)
@@ -70,6 +72,7 @@ jobs:
           else
             gh api "repos/$GITHUB_REPOSITORY/contents/onekvm.sh?ref=$GITHUB_SHA" \
               --jq .content | base64 --decode > .worker-release/onekvm.sh
+            : > .worker-release/release-url
             echo "No stable release found; deploying onekvm.sh from $GITHUB_SHA"
           fi
 
@@ -88,12 +91,20 @@ jobs:
           if not script.startswith('#!/bin/sh'):
               raise SystemExit('release asset is not an onekvm.sh script')
           digest = hashlib.sha256(script_bytes).hexdigest()
+          manifest_path = Path('.worker-release/SHA256SUMS')
+          # The shell script can stay unchanged while the installer binary changes.
+          release_id = hashlib.sha256(manifest_path.read_bytes()).hexdigest() if manifest_path.exists() else digest
+          release_url = Path('.worker-release/release-url').read_text().strip()
           destination = Path('cloudflare-worker/src/installer-script.js')
           destination.write_text(
               'export const INSTALLER_SCRIPT = '
               + json.dumps(script, ensure_ascii=True)
               + ';\nexport const INSTALLER_SCRIPT_SHA256 = '
               + json.dumps(digest)
+              + ';\nexport const INSTALLER_RELEASE_ID = '
+              + json.dumps(release_id)
+              + ';\nexport const INSTALLER_RELEASE_URL = '
+              + json.dumps(release_url)
               + ';\n',
               encoding='utf-8',
           )

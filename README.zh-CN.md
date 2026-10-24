@@ -152,7 +152,10 @@ GitHub Actions 会在分支更新和 PR 时运行检查并打包。推送与
 
 仓库还提供可选的 [Cloudflare Worker](cloudflare-worker/README.md)。每次
 Release 发布后，工作流会校验并将该 Release 中的 `onekvm.sh` 嵌入 Worker；
-`curl` 会收到脚本，其他 User-Agent 会被 301 重定向到项目主页。
+`curl` 会收到脚本，其他 User-Agent 会被 301 重定向到项目主页。当
+Cloudflare 判断来源 IP 位于中国（`CF-IPCountry: CN`）时，脚本会把校验文件和
+安装器二进制的默认下载地址指向 Worker 自身的固定代理，设备无需直接连接
+GitHub。代理只允许这些发布资产，并按发布清单哈希和资产 URL 缓存。
 
 ## 许可证
 

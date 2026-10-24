@@ -170,7 +170,10 @@ containing Linux `riscv64` and `arm64` executables, a separate
 The release workflow can also deploy the optional Cloudflare Worker in
 [`cloudflare-worker`](cloudflare-worker/README.md). It embeds the verified
 `onekvm.sh` asset from each published Release, serves it to `curl`,
-and redirects other user agents to the project page.
+and redirects other user agents to the project page. For requests identified by
+Cloudflare as originating in China, the returned script uses the Worker as a
+fixed proxy for the release checksums and installer binary; those assets are
+cached by the release manifest hash and asset URL.
 
 ## License
 

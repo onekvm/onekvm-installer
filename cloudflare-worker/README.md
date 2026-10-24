@@ -8,10 +8,20 @@ published installer Release:
 - a missing embedded script returns `503` instead of serving an incomplete
   installer.
 
+Requests with the Cloudflare `CF-IPCountry: CN` value receive a script whose
+default release URL points back to this Worker. The Worker then fetches
+`SHA256SUMS` and the supported Linux installer binary from the selected GitHub
+Release URL, so devices in China do not need to connect to GitHub directly.
+The proxy accepts only those release assets; it is not an open URL proxy. A
+fallback deployment without a stable Release uses the latest Release URL.
+
 Script responses use the Cloudflare Cache API. The cache key contains the
-script's SHA-256, so a release can use a one-year edge TTL without serving the
-previous release after deployment. Browser redirects are kept out of this
-cache because the response depends on the request's User-Agent.
+script's SHA-256 and the country variant, so a release can use a one-year edge
+TTL without serving the previous release or the wrong script variant after
+deployment. Proxied release assets use a cache URL containing the verified
+`SHA256SUMS` digest and asset name, so a new binary release gets a new cache
+entry even when `onekvm.sh` is unchanged. Browser redirects are kept out of
+this cache because the response depends on the request's User-Agent.
 
 The Worker source is deployed by
 [`../.github/workflows/deploy-worker.yml`](../.github/workflows/deploy-worker.yml)

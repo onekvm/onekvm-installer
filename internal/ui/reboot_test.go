@@ -59,6 +59,24 @@ func TestPostInstallAccessGuidance(t *testing.T) {
 	}
 }
 
+func TestReinstallAccessGuidanceUsesPreservedWebAddress(t *testing.T) {
+	for _, test := range []struct {
+		scheme string
+		port   int
+		want   string
+	}{
+		{"http", 80, "http://10.100.99.107/"},
+		{"http", 8080, "http://10.100.99.107:8080/"},
+		{"https", 8443, "https://10.100.99.107:8443/"},
+	} {
+		m := testModel(t)
+		m.access = installer.AccessInfo{Username: "admin", Network: installer.Network{Mode: "static", Address: "10.100.99.107/24"}, WebScheme: test.scheme, WebPort: test.port}
+		if text := m.accessMessage(); !strings.Contains(text, test.want) {
+			t.Fatal("incorrect preserved Web address", text)
+		}
+	}
+}
+
 func TestRebootChildSurvivesInstallerExit(t *testing.T) {
 	if os.Getenv("ONEKVM_TEST_REBOOT_HELPER") == "1" {
 		if err := delayedReboot(); err != nil {

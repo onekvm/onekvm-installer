@@ -62,6 +62,53 @@ func WritePrivate(path string, data []byte) error {
 	return SyncDir(filepath.Dir(path))
 }
 
+// RewriteBootPayload runs only after the image write has been verified, while
+// recovery owns the unbooted target. Reuse its allocated FAT clusters: compact
+// carriers do not have room for a second full kernel/initramfs temporary file.
+// A failure stops recovery; keep power connected until write/readback finishes.
+func RewriteBootPayload(path string, data []byte) error {
+	if len(data) == 0 {
+		return fmt.Errorf("empty boot payload")
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("boot payload is not a regular file")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return err
+	}
+	n, err := f.Write(data)
+	if err == nil && n != len(data) {
+		err = io.ErrShortWrite
+	}
+	if err == nil {
+		err = f.Truncate(int64(len(data)))
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	actual, err := HashFile(path, nil)
+	want := sha256.Sum256(data)
+	if err != nil {
+		return err
+	}
+	if actual != hex.EncodeToString(want[:]) {
+		return fmt.Errorf("boot payload readback mismatch")
+	}
+	return SyncDir(filepath.Dir(path))
+}
+
 func JsonBytes(v any) ([]byte, error) {
 	b, err := json.MarshalIndent(v, "", "  ")
 	return append(b, '\n'), err

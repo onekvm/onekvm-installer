@@ -9,7 +9,13 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
+
+type configurationSeeder interface {
+	SeedConfiguration(string, Device, Request, []byte, []byte) error
+}
 
 func checkDisk(d Device) error {
 	machine, err := MachineFor(d.Profile)
@@ -76,13 +82,13 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if _, err = Run("mount", "-t", "vfat", "-o", "ro,nodev,nosuid,noexec", bootDevice, boot); err != nil {
+	if _, err = mountRecovery(bootDevice, boot, "vfat", syscall.MS_RDONLY|syscall.MS_NODEV|syscall.MS_NOSUID|syscall.MS_NOEXEC, ""); err != nil {
 		return false, err
 	}
 	bootMounted := true
 	defer func() {
 		if bootMounted {
-			_, _ = Run("umount", boot)
+			_, _ = unmountRecovery(boot)
 		}
 	}()
 	if _, e := os.Stat(filepath.Join(boot, "onekvm-install.started.json")); e == nil {
@@ -115,16 +121,17 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 	if d.DataType != "exfat" && d.DataType != "ext4" && d.DataType != "f2fs" {
 		return false, fmt.Errorf("unsupported userdata filesystem")
 	}
-	if _, err = Run("mount", "-t", d.DataType, "-o", "ro,nodev,nosuid,noexec", d.Userdata, data); err != nil {
+	if _, err = mountRecovery(d.Userdata, data, d.DataType, syscall.MS_RDONLY|syscall.MS_NODEV|syscall.MS_NOSUID|syscall.MS_NOEXEC, ""); err != nil {
 		return false, err
 	}
 	dataMounted := true
 	defer func() {
 		if dataMounted {
-			_, _ = Run("umount", data)
+			_, _ = unmountRecovery(data)
 		}
 	}()
-	path := filepath.Join(data, StageName)
+	staged := recoveryStagingDevice(d, data)
+	path := StageDir(staged)
 	hash, e := HashFile(filepath.Join(path, "request.json"), nil)
 	if e != nil {
 		return false, e
@@ -132,8 +139,6 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 	if hash != marker.RequestSHA256 {
 		return false, fmt.Errorf("installation request changed")
 	}
-	staged := d
-	staged.DataMount = data
 	var req Request
 	err = report("Rechecking staged image and configuration", func(p Progress) error { var e error; req, e = LoadPrepared(staged, p); return e })
 	if err != nil {
@@ -153,10 +158,10 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 	if imageFile.Size() != req.ImageBytes || req.ImageBytes <= 0 || req.ImageBytes+RAMReserve > mem {
 		return false, fmt.Errorf("not enough available RAM for complete image; target has not been erased")
 	}
-	if _, err = Run("mount", "-t", "tmpfs", "-o", fmt.Sprintf("mode=0700,size=%d", req.ImageBytes+MiB), "tmpfs", ram); err != nil {
+	if _, err = mountRecovery("tmpfs", ram, "tmpfs", 0, fmt.Sprintf("mode=0700,size=%d", req.ImageBytes+MiB)); err != nil {
 		return false, err
 	}
-	defer func() { _, _ = Run("umount", ram) }()
+	defer func() { _, _ = unmountRecovery(ram) }()
 	cache := filepath.Join(ram, "image.img")
 	err = report("Loading complete image from userdata into RAM", func(p Progress) error {
 		s, e := os.Open(filepath.Join(path, "image.img"))
@@ -204,16 +209,37 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 	if hex.EncodeToString(fhash[:]) != req.FirstbootSHA256 {
 		return false, fmt.Errorf("firstboot configuration changed")
 	}
+	var config, hook []byte
+	var seed configurationSeeder
+	if req.ConfigSHA256 != "" {
+		config, e = loadSystemConfig(path, req.ConfigSHA256)
+		if e != nil {
+			return false, e
+		}
+		defer clear(config)
+		hook, e = ConfigurationHook(req)
+		if e != nil {
+			return false, e
+		}
+		machine, e := MachineFor(d.Profile)
+		if e != nil {
+			return false, e
+		}
+		var ok bool
+		if seed, ok = machine.(configurationSeeder); !ok {
+			return false, fmt.Errorf("configuration restoration unavailable for target")
+		}
+	}
 	// Mark as started only after everything needed is in RAM. An interrupted
 	// write must stop instead of replaying the request or normal firstboot.
-	if _, err = Run("mount", "-o", "remount,rw", data); err != nil {
+	if _, err = mountRecovery(d.Userdata, data, d.DataType, syscall.MS_REMOUNT, ""); err != nil {
 		return false, err
 	}
 	req.State = "writing"
 	if err = WriteJSON(filepath.Join(path, "request.json"), req); err != nil {
 		return false, err
 	}
-	if _, err = Run("mount", "-o", "remount,rw", boot); err != nil {
+	if _, err = mountRecovery(bootDevice, boot, "vfat", syscall.MS_REMOUNT, ""); err != nil {
 		return false, err
 	}
 	if err = os.Rename(markerPath, filepath.Join(boot, "onekvm-install.started.json")); err != nil {
@@ -222,11 +248,11 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 	if err = SyncDir(boot); err != nil {
 		return false, err
 	}
-	if _, err = Run("umount", data); err != nil {
+	if _, err = unmountRecovery(data); err != nil {
 		return false, err
 	}
 	dataMounted = false
-	if _, err = Run("umount", boot); err != nil {
+	if _, err = unmountRecovery(boot); err != nil {
 		return false, err
 	}
 	bootMounted = false
@@ -251,6 +277,20 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 	if err = syscall.Flock(int(target.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return false, err
 	}
+	// eMMC's cmdline partition map survives the image write. Invalidate its
+	// old userdata filesystem so firstboot formats it instead of retaining
+	// extensions and personal files in either reinstallation mode.
+	if d.Reinstall && d.Profile == "pro-emmc" {
+		if _, err = target.Seek(d.DataStart*512, 0); err != nil {
+			return false, err
+		}
+		if _, err = target.Write(make([]byte, MiB)); err != nil {
+			return false, err
+		}
+		if err = target.Sync(); err != nil {
+			return false, err
+		}
+	}
 	r, e := OpenImage(cache)
 	if e != nil {
 		return false, e
@@ -267,29 +307,33 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 	if verified.BootStart == d.BootStart && verified.BootSectors == d.BootSectors {
 		// Factory cmdline partitions remain visible until reboot.
 	} else {
-		if _, err = Run("blockdev", "--rereadpt", disk); err != nil {
+		if _, err = rereadRecovery(disk); err != nil {
 			return false, err
 		}
 		for i := 0; i < 100; i++ {
-			count, _ := ReadNumber("/sys/class/block/mmcblk0p1/size")
+			count, _ := ReadNumber("/sys/class/block/" + filepath.Base(bootDevice) + "/size")
 			if count == verified.BootSectors {
 				break
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		count, e := ReadNumber("/sys/class/block/mmcblk0p1/size")
+		count, e := ReadNumber("/sys/class/block/" + filepath.Base(bootDevice) + "/size")
 		if e != nil || count != verified.BootSectors {
 			return false, fmt.Errorf("new boot partition did not appear")
 		}
 	}
-	if _, err = Run("mount", "-t", "vfat", "-o", "rw,nodev,nosuid,noexec", bootDevice, boot); err != nil {
+	if _, err = mountRecovery(bootDevice, boot, "vfat", syscall.MS_NODEV|syscall.MS_NOSUID|syscall.MS_NOEXEC, ""); err != nil {
 		return false, err
 	}
 	bootMounted = true
-	if err = WritePrivate(filepath.Join(boot, "firstboot.txt"), firstboot); err != nil {
+	if req.ConfigSHA256 != "" {
+		if err = seed.SeedConfiguration(boot, d, req, config, hook); err != nil {
+			return false, err
+		}
+	} else if err = WritePrivate(filepath.Join(boot, "firstboot.txt"), firstboot); err != nil {
 		return false, err
 	}
-	if _, err = Run("umount", boot); err != nil {
+	if _, err = unmountRecovery(boot); err != nil {
 		return false, err
 	}
 	bootMounted = false
@@ -303,4 +347,23 @@ func RecoverMMC(bootDevice string, report Reporter) (installed bool, err error) 
 		}
 	}
 	return true, nil
+}
+
+func recoveryStagingDevice(d Device, mount string) Device {
+	d.DataMount = filepath.Join(mount, strings.TrimPrefix(d.DataRoot, "/"))
+	return d
+}
+
+// These syscalls also work in the self-contained reinstallation initramfs.
+func mountRecovery(source, target, kind string, flags uintptr, data string) (string, error) {
+	return "", syscall.Mount(source, target, kind, flags, data)
+}
+func unmountRecovery(target string) (string, error) { return "", syscall.Unmount(target, 0) }
+func rereadRecovery(disk string) (string, error) {
+	f, err := os.OpenFile(disk, os.O_RDWR, 0)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	return "", unix.IoctlSetInt(int(f.Fd()), unix.BLKRRPART, 0)
 }

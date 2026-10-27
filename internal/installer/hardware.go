@@ -12,6 +12,7 @@ import (
 type Mount struct{ Device, Path, Type string }
 type Device struct {
 	Profile       string `json:"profile"`
+	Reinstall     bool   `json:"reinstall,omitempty"`
 	Model         string `json:"model"`
 	HardwareModel string `json:"hardware_model"`
 	Disk          string `json:"disk"`
@@ -24,6 +25,7 @@ type Device struct {
 	BootSectors   int64  `json:"boot_sectors"`
 	Userdata      string `json:"userdata_device"`
 	DataMount     string `json:"userdata_mount"`
+	DataRoot      string `json:"userdata_root,omitempty"`
 	DataType      string `json:"userdata_type"`
 	DataStart     int64  `json:"userdata_start"`
 	DataSectors   int64  `json:"userdata_sectors"`
@@ -123,6 +125,10 @@ func ProbeMMC(root string) (Device, error) {
 		model = compatible
 	}
 	d.Model = strings.ReplaceAll(model, "\x00", ", ")
+	d.Reinstall, err = InstalledSystem(root)
+	if err != nil {
+		return d, err
+	}
 	d.BootStart, err = ReadNumber(p("sys/class/block/" + filepath.Base(d.Boot) + "/start"))
 	if err != nil {
 		return d, err
@@ -144,12 +150,31 @@ func ProbeMMC(root string) (Device, error) {
 		return d, fmt.Errorf("expected one userdata partition mounted at /data or /mnt/storage, found %d", len(candidates))
 	}
 	m := candidates[0]
-	if CmdlineValue(ReadTrim(p("proc/cmdline")), "root") == m.Device {
+	if RootDevice(root) == m.Device {
 		return d, fmt.Errorf("userdata resolves to the running root partition")
 	}
 	d.Userdata = m.Device
 	d.DataMount = m.Path
 	d.DataType = m.Type
+	// Installed OneKVM exposes /storage through a bind mount. Recovery mounts
+	// the whole filesystem, so retain the bind root when locating the stage.
+	if info, e := os.ReadFile(p("proc/self/mountinfo")); e == nil {
+		for _, line := range strings.Split(string(info), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) < 6 || unescapeMount(fields[4]) != m.Path {
+				continue
+			}
+			d.DataRoot = unescapeMount(fields[3])
+			if !filepath.IsAbs(d.DataRoot) || filepath.Clean(d.DataRoot) != d.DataRoot {
+				return d, fmt.Errorf("invalid userdata mount root")
+			}
+			if d.DataRoot == "/" {
+				d.DataRoot = ""
+			}
+		}
+	} else if !os.IsNotExist(e) {
+		return d, e
+	}
 	d.DataStart, err = ReadNumber(p("sys/class/block/" + filepath.Base(d.Userdata) + "/start"))
 	if err != nil {
 		return d, err
@@ -170,8 +195,8 @@ func (d Device) CanArm() error {
 }
 
 func SameDisk(a, b Device) bool {
-	return a.Profile == b.Profile && a.Disk == b.Disk && a.CID == b.CID && a.Media == b.Media && a.Bytes == b.Bytes && a.Boot == b.Boot && a.BootStart == b.BootStart &&
-		a.BootSectors == b.BootSectors && a.Userdata == b.Userdata && a.DataStart == b.DataStart && a.DataSectors == b.DataSectors && a.SystemCID == b.SystemCID && a.SystemBytes == b.SystemBytes
+	return a.Reinstall == b.Reinstall && a.Profile == b.Profile && a.Disk == b.Disk && a.CID == b.CID && a.Media == b.Media && a.Bytes == b.Bytes && a.Boot == b.Boot && a.BootStart == b.BootStart &&
+		a.BootSectors == b.BootSectors && a.Userdata == b.Userdata && a.DataRoot == b.DataRoot && a.DataStart == b.DataStart && a.DataSectors == b.DataSectors && a.SystemCID == b.SystemCID && a.SystemBytes == b.SystemBytes
 }
 
 // ProbeTarget binds an image profile to hardware; a filename cannot select an
@@ -191,4 +216,58 @@ func ProbeTarget(root string, current Device, profile string) (Device, error) {
 	return machine.Probe(root)
 }
 
-func DirectInstall(d Device) bool { m, err := MachineFor(d.Profile); return err == nil && m.Direct() }
+func DirectInstall(d Device) bool {
+	m, err := MachineFor(d.Profile)
+	return err == nil && m.Direct() && !d.Reinstall
+}
+
+// Resolve the actual mounted root, or the boot parameter's kernel partition
+// identity before root is mounted. Never infer it from /boot.
+func RootDisk(root string) string { return ParentDisk(RootDevice(root)) }
+
+func RootDevice(root string) string {
+	value := CmdlineValue(ReadTrim(filepath.Join(root, "proc/cmdline")), "root")
+	if disk := ParentDisk(value); disk != "" {
+		return value
+	}
+	key, want, ok := strings.Cut(value, "=")
+	if !ok || (key != "PARTUUID" && key != "PARTLABEL") {
+		return ""
+	}
+	// Firstboot can add partitions with BLKPG before rebooting. Those sysfs
+	// uevents have no PARTUUID metadata; the mounted root remains authoritative.
+	if mounts, err := Mounts(root); err == nil {
+		for _, mount := range mounts {
+			if mount.Path != "/" {
+				continue
+			}
+			if ParentDisk(mount.Device) != "" {
+				return mount.Device
+			}
+			if mount.Type == "overlay" {
+				for _, lower := range mounts {
+					if lower.Path == "/mnt/.rofs" && (lower.Type == "squashfs" || lower.Type == "erofs") && ParentDisk(lower.Device) != "" {
+						return lower.Device
+					}
+				}
+			}
+		}
+	}
+	if key == "PARTLABEL" {
+		key = "PARTNAME"
+	}
+	paths, _ := filepath.Glob(filepath.Join(root, "sys/class/block/mmcblk*p*/uevent"))
+	found := ""
+	for _, path := range paths {
+		for _, line := range strings.Split(ReadTrim(path), "\n") {
+			if line == key+"="+want {
+				device := "/dev/" + filepath.Base(filepath.Dir(path))
+				if found != "" && found != device {
+					return ""
+				}
+				found = device
+			}
+		}
+	}
+	return found
+}

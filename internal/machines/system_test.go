@@ -1,7 +1,6 @@
 package machines_test
 
 import (
-	"errors"
 	"testing"
 
 	. "github.com/onekvm/onekvm-installer/internal/installer"
@@ -32,25 +31,23 @@ func TestInstallTargetSystemIdentity(t *testing.T) {
 			}
 			// There is no boot mount or userdata: the installed-system check
 			// must work before probing storage or creating any installation files.
-			err := CheckInstallTarget(root)
-			if tt.installed {
-				if !errors.Is(err, ErrAlreadyInstalled) {
-					t.Fatalf("expected installed-system refusal, got %v", err)
-				}
-			} else if err != nil {
-				t.Fatal(err)
+			installed, err := InstalledSystem(root)
+			if err != nil || installed != tt.installed {
+				t.Fatalf("installed=%v, want %v; error=%v", installed, tt.installed, err)
 			}
+
 		})
 	}
 }
 
-func TestInstalledSystemCanStillBeInspected(t *testing.T) {
+func TestInstalledSystemCanBeReinstalled(t *testing.T) {
 	root := vendorFixture(t)
 	put(t, root, "etc/os-release", "ID=onekvm\n")
-	if !errors.Is(CheckInstallTarget(root), ErrAlreadyInstalled) {
-		t.Fatal("installation allowed on OneKVM")
+	d, err := Probe(root)
+	if err != nil || !d.Reinstall {
+		t.Fatalf("installed system was not selected for reinstallation: %+v %v", d, err)
 	}
-	if _, err := Probe(root); err != nil {
-		t.Fatal("read-only inspection was blocked", err)
+	if err := d.CanArm(); err != nil {
+		t.Fatal(err)
 	}
 }

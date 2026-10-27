@@ -31,6 +31,10 @@ type Options struct {
 }
 
 type services struct {
+	snapshot                func(string) (installer.SystemSnapshot, error)
+	prepareConfig           func(context.Context, installer.Device, string, *installer.ReleaseAsset, installer.SystemSnapshot, installer.Reporter) (installer.Request, error)
+	prepareDownloadedConfig func(context.Context, installer.Device, *installer.DownloadedImage, installer.SystemSnapshot, installer.Reporter) (installer.Request, error)
+
 	fetch             func(context.Context, string, string) (installer.Release, error)
 	network           func(string, string) (installer.Network, error)
 	wifi              func(string) (installer.WiFiSnapshot, error)
@@ -50,7 +54,7 @@ type services struct {
 }
 
 func defaults() services {
-	return services{fetch: installer.FetchRelease, network: installer.CopyEthernetNetwork, wifi: installer.CopyWiFi, static: installer.StaticNetwork, prepare: installer.Prepare,
+	return services{snapshot: installer.SnapshotSystem, prepareConfig: installer.PrepareWithConfig, prepareDownloadedConfig: installer.PrepareDownloadedWithConfig, fetch: installer.FetchRelease, network: installer.CopyEthernetNetwork, wifi: installer.CopyWiFi, static: installer.StaticNetwork, prepare: installer.Prepare,
 		arm: installer.Arm, reboot: delayedReboot, verify: installer.VerifyContext, downloadURL: installer.DownloadURL, prepared: installer.LoadPrepared, target: installer.ProbeTarget, direct: installer.InstallDirect,
 		download: installer.DownloadImage, prepareDownloaded: installer.PrepareDownloaded, check: installer.CheckSolutions, repair: installer.PrepareRepair}
 }
@@ -64,6 +68,7 @@ const (
 	localPage
 	remotePage
 	assetsPage
+	reinstallModePage
 	accountPage
 	timezonePage
 	networkPage
@@ -150,48 +155,49 @@ type jobResult struct {
 type interrupted struct{}
 
 type model struct {
-	opts          Options
-	deps          services
-	ctx           context.Context
-	page          page
-	menu          list.Model
-	fields        []field
-	focus         int
-	spin          spinner.Model
-	bar           progress.Model
-	width, height int
-	errKey        string
-	errArgs       []any
-	err           error
-	source        string
-	image         installer.Image
-	asset         *installer.ReleaseAsset
-	downloaded    *installer.DownloadedImage
-	release       installer.Release
-	assets        []installer.ReleaseAsset
-	username      string
-	password      string
-	timezone      string
-	network       installer.Network
-	imported      bool
-	wifi          installer.WiFiSnapshot
-	req           installer.Request
-	access        installer.AccessInfo
-	task          *taskStatus
-	taskCancel    context.CancelFunc
-	exitAfterJob  bool
-	message       string
-	remoteURL     string
-	cancelled     bool
-	pulse         int
-	splash        splash
-	checks        installer.CheckResult
-	checkErr      error
-	checkNext     string
-	solutionIndex int
-	solutionView  solutionView
-	repairPlan    *installer.RepairPlan
-	repairErr     error
+	systemSnapshot *installer.SystemSnapshot
+	opts           Options
+	deps           services
+	ctx            context.Context
+	page           page
+	menu           list.Model
+	fields         []field
+	focus          int
+	spin           spinner.Model
+	bar            progress.Model
+	width, height  int
+	errKey         string
+	errArgs        []any
+	err            error
+	source         string
+	image          installer.Image
+	asset          *installer.ReleaseAsset
+	downloaded     *installer.DownloadedImage
+	release        installer.Release
+	assets         []installer.ReleaseAsset
+	username       string
+	password       string
+	timezone       string
+	network        installer.Network
+	imported       bool
+	wifi           installer.WiFiSnapshot
+	req            installer.Request
+	access         installer.AccessInfo
+	task           *taskStatus
+	taskCancel     context.CancelFunc
+	exitAfterJob   bool
+	message        string
+	remoteURL      string
+	cancelled      bool
+	pulse          int
+	splash         splash
+	checks         installer.CheckResult
+	checkErr       error
+	checkNext      string
+	solutionIndex  int
+	solutionView   solutionView
+	repairPlan     *installer.RepairPlan
+	repairErr      error
 }
 
 func newModel(ctx context.Context, opts Options, deps services) *model {
@@ -387,6 +393,9 @@ func (m *model) rebuildMenu(selected int) {
 		for i, a := range m.assets {
 			items = append(items, menuItem{fmt.Sprint(i), clean(a.Name), t("assets.desc", float64(a.Size)/installer.MiB)})
 		}
+	case reinstallModePage:
+		add("preserve", "reinstall.preserve", "reinstall.preserve.desc")
+		add("fresh", "reinstall.fresh", "reinstall.fresh.desc")
 	case networkPage:
 		add("copy", "network.copy", "network.copy.desc")
 		add("dhcp", "network.dhcp", "network.dhcp.desc")
@@ -405,6 +414,8 @@ func (m *model) rebuildMenu(selected int) {
 	case reviewPage:
 		if installer.DirectInstall(m.opts.Device) {
 			add("stage", "review.direct", "review.direct.desc")
+		} else if m.systemSnapshot != nil {
+			add("stage", "review.stage", "reinstall.stage.desc")
 		} else {
 			add("stage", "review.stage", "review.stage.desc")
 		}
@@ -468,6 +479,10 @@ func (m *model) exit() tea.Cmd {
 		m.taskCancel()
 	}
 	m.closeDownload()
+	if m.systemSnapshot != nil {
+		clear(m.systemSnapshot.Data)
+		m.systemSnapshot = nil
+	}
 	m.password, m.fields = "", nil
 	m.cancelled = true
 	if m.page == rebootPage || (m.message == "done.armed" || m.message == "done.direct") {
@@ -590,7 +605,14 @@ func (m *model) back() tea.Cmd {
 	case remotePage:
 		m.closeDownload()
 		m.goPage(sourcePage)
+	case reinstallModePage:
+		m.closeDownload()
+		m.goPage(sourcePage)
 	case accountPage:
+		if m.opts.Device.Reinstall {
+			m.goPage(reinstallModePage)
+			return nil
+		}
 		m.password = ""
 		m.closeDownload()
 		m.goPage(sourcePage)
@@ -605,6 +627,10 @@ func (m *model) back() tea.Cmd {
 	case wifiFormPage:
 		m.goPage(wifiPage)
 	case reviewPage:
+		if m.systemSnapshot != nil {
+			m.goPage(reinstallModePage)
+			return nil
+		}
 		if len(m.wifi.Interfaces) > 0 {
 			m.goPage(wifiPage)
 		} else {
@@ -682,6 +708,16 @@ func (m *model) selectItem() tea.Cmd {
 		m.network = installer.Network{Interface: opts.Interface, Mode: item.id, Hostname: m.network.Hostname, WiFi: m.network.WiFi}
 		m.goPage(networkFormPage)
 		return textinput.Blink
+	case reinstallModePage:
+		if item.id == "fresh" {
+			if m.systemSnapshot != nil {
+				clear(m.systemSnapshot.Data)
+				m.systemSnapshot = nil
+			}
+			m.goPage(accountPage)
+			return textinput.Blink
+		}
+		return m.begin("system-snapshot", "op.config_snapshot", func(context.Context, installer.Reporter) (any, error) { return deps.snapshot("/") })
 	case copiedDHCPPage:
 		if item.id == "static" {
 			current := m.network
@@ -704,11 +740,26 @@ func (m *model) selectItem() tea.Cmd {
 		m.goPage(reviewPage)
 	case reviewPage:
 		if item.id == "back" {
+			if m.systemSnapshot != nil {
+				m.goPage(reinstallModePage)
+				return nil
+			}
 			m.goPage(networkPage)
 			return nil
 		}
 		if installer.DirectInstall(opts.Device) {
 			return m.startChecks("confirm")
+		}
+		if m.systemSnapshot != nil {
+			snapshot, source, asset, downloaded := *m.systemSnapshot, m.source, m.asset, m.downloaded
+			snapshot.Data = append([]byte(nil), snapshot.Data...)
+			return m.begin("prepare", "reinstall.prepare", func(ctx context.Context, report installer.Reporter) (any, error) {
+				defer clear(snapshot.Data)
+				if downloaded != nil {
+					return deps.prepareDownloadedConfig(ctx, opts.Device, downloaded, snapshot, report)
+				}
+				return deps.prepareConfig(ctx, opts.Device, source, asset, snapshot, report)
+			})
 		}
 		username, password, n, source, asset, downloaded := m.username, m.password, m.network, m.source, m.asset, m.downloaded
 		system := installer.SystemSettings{Language: m.opts.Text.Language, Timezone: m.timezone}
@@ -888,6 +939,9 @@ func accountError(username, password, confirmation string) string {
 
 func (m *model) finishJob(r jobResult) tea.Cmd {
 	if m.cancelled {
+		if snapshot, ok := r.data.(installer.SystemSnapshot); ok {
+			clear(snapshot.Data)
+		}
 		return nil
 	}
 	if m.task != nil {
@@ -898,6 +952,9 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 	}
 	if r.err != nil {
 		switch r.kind {
+		case "system-snapshot":
+			m.goPage(reinstallModePage)
+			m.error("error.details", clean(r.err.Error()))
 		case "repair-prepare":
 			m.goPage(issuesPage)
 			m.error("error.details", clean(r.err.Error()))
@@ -939,6 +996,15 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 		}
 	} else {
 		switch r.kind {
+		case "system-snapshot":
+			snapshot := r.data.(installer.SystemSnapshot)
+			if m.systemSnapshot != nil {
+				clear(m.systemSnapshot.Data)
+			}
+			m.systemSnapshot = &snapshot
+			m.username, m.network, m.timezone = snapshot.Access.Username, snapshot.Access.Network, snapshot.Timezone
+			m.goPage(reviewPage)
+
 		case "repair-prepare":
 			plan := r.data.(installer.RepairPlan)
 			m.repairPlan = &plan

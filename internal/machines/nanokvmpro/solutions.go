@@ -59,9 +59,15 @@ func checkSDBoot(ctx context.Context, in installer.CheckContext) (installer.Chec
 }
 
 func proSDPresent(root string) bool {
-	if installer.ReadTrim(filepath.Join(root, "sys/class/block/mmcblk1/device/type")) != "SD" {
-		return false
+	paths, _ := filepath.Glob(filepath.Join(root, "sys/class/block/mmcblk*/device/type"))
+	for _, path := range paths {
+		if installer.ReadTrim(path) != "SD" {
+			continue
+		}
+		name := filepath.Base(filepath.Dir(filepath.Dir(path)))
+		if _, err := os.Stat(filepath.Join(root, "dev", name)); err == nil {
+			return true
+		}
 	}
-	_, err := os.Stat(filepath.Join(root, "dev/mmcblk1"))
-	return err == nil
+	return false
 }

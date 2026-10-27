@@ -100,7 +100,6 @@ func (t Translator) Diagnostic(message string) string {
 		"another installer is running":                                              "diagnostic.lock",
 		"recovery boot replacement has started; keep the staged installation files": "diagnostic.armed",
 		"select an image outside the installer staging directory":                   "diagnostic.staged_source",
-		"OneKVM is already installed; use the system updater":                       "diagnostic.installed",
 		"installation profile is detected from hardware and cannot be overridden":   "diagnostic.profile",
 	}
 	if key, ok := keys[message]; ok {

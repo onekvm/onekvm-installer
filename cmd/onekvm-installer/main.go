@@ -232,11 +232,6 @@ func execute(ctx context.Context, args []string) error {
 	if name != "inspect" && name != "releases" && name != "prepare" && name != "install" && name != "arm" {
 		return fmt.Errorf("unknown command %q", name)
 	}
-	if name == "install" || name == "prepare" || name == "arm" {
-		if err := installer.CheckInstallTarget("/"); err != nil {
-			return err
-		}
-	}
 	catalog, err := installer.LoadCatalog(*catalogPath)
 	if err != nil {
 		return err
@@ -290,6 +285,10 @@ func execute(ctx context.Context, args []string) error {
 }
 
 func main() {
+	if os.Getpid() == 1 {
+		installer.InitramfsMain()
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := execute(ctx, os.Args[1:]); err != nil {

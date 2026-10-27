@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -19,6 +20,9 @@ type Request struct {
 	ImageBytes      int64             `json:"image_bytes"`
 	FileSHA256      string            `json:"file_sha256"`
 	FirstbootSHA256 string            `json:"firstboot_sha256"`
+	ConfigSHA256    string            `json:"config_sha256,omitempty"`
+	SSHEnabled      bool              `json:"ssh_enabled,omitempty"`
+	Timezone        string            `json:"timezone,omitempty"`
 	KernelSHA256    string            `json:"kernel_sha256"`
 	EnvSHA256       string            `json:"env_sha256"`
 	BootFiles       map[string]string `json:"boot_files,omitempty"`
@@ -43,22 +47,22 @@ func freeBytes(path string) (int64, error) {
 func StageDir(d Device) string { return filepath.Join(d.DataMount, StageName) }
 
 func Prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, firstboot []byte, report Reporter) (req Request, err error) {
-	return prepare(ctx, d, source, asset, nil, firstboot, report)
+	return prepare(ctx, d, source, asset, nil, firstboot, nil, report)
 }
 
 func PrepareDownloaded(ctx context.Context, d Device, image *DownloadedImage, firstboot []byte, report Reporter) (Request, error) {
 	if image == nil || !SameDisk(d, image.device) || image.Image.Profile != d.Profile {
 		return Request{}, fmt.Errorf("download does not match the selected target")
 	}
-	return prepare(ctx, d, image.Source, nil, image, firstboot, report)
+	return prepare(ctx, d, image.Source, nil, image, firstboot, nil, report)
 }
 
-func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, downloaded *DownloadedImage, firstboot []byte, report Reporter) (req Request, err error) {
+func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, downloaded *DownloadedImage, firstboot []byte, snapshot *SystemSnapshot, report Reporter) (req Request, err error) {
+	if snapshot != nil && !d.Reinstall {
+		return req, fmt.Errorf("configuration migration requires an installed OneKVM system")
+	}
 	if DirectInstall(d) {
 		return req, fmt.Errorf("direct installation must not create a staging directory")
-	}
-	if err = CheckInstallTarget("/"); err != nil {
-		return req, err
 	}
 	if report == nil {
 		report = Report
@@ -129,6 +133,27 @@ func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, 
 	if err != nil {
 		return req, err
 	}
+	if snapshot != nil {
+		if err := checkConfigVersion(snapshot.Version, info); err != nil {
+			return req, err
+		}
+		f, err := os.Open(source)
+		if err != nil {
+			return req, err
+		}
+		free, spaceErr := FatFreeBytes(io.NewSectionReader(f, info.BootStart*512, info.BootSectors*512))
+		closeErr := f.Close()
+		if spaceErr != nil {
+			return req, spaceErr
+		}
+		if closeErr != nil {
+			return req, closeErr
+		}
+		// The hook and rewritten script growth fit comfortably in 1 MiB.
+		if free < int64(len(snapshot.Data))+MiB {
+			return req, fmt.Errorf("image boot partition has insufficient configuration restoration space")
+		}
+	}
 	if info.PayloadSize+512+RAMReserve > mem {
 		return req, fmt.Errorf("image needs %d MiB RAM plus %d MiB recovery reserve; device has %d MiB", (info.PayloadSize+512)/MiB, RAMReserve/MiB, mem/MiB)
 	}
@@ -162,7 +187,18 @@ func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, 
 	if err != nil {
 		return req, err
 	}
-	err = report("Extracting installer recovery kernel", func(p Progress) error { return machine.ExtractBootstrap(staged, dir, p) })
+	err = report("Extracting installer recovery kernel", func(p Progress) error {
+		if d.Reinstall {
+			reinstall, ok := machine.(interface {
+				PrepareReinstall(string, string, Request, Progress) error
+			})
+			if !ok {
+				return fmt.Errorf("reinstallation is unavailable for %s", d.Profile)
+			}
+			return reinstall.PrepareReinstall(staged, dir, Request{Device: d}, p)
+		}
+		return machine.ExtractBootstrap(staged, dir, p)
+	})
 	if err != nil {
 		return req, err
 	}
@@ -175,6 +211,21 @@ func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, 
 			return err
 		}
 		req = Request{Version: RecoveryAPI, Token: hex.EncodeToString(token), State: "prepared", Device: d, Image: info, ImageBytes: info.PayloadSize + 512}
+		if snapshot != nil {
+			data, _, _, e := systemConfiguration(snapshot.Data)
+			if e != nil {
+				return e
+			}
+			defer clear(data)
+			if err = WritePrivate(filepath.Join(dir, SystemConfigName), data); err != nil {
+				return err
+			}
+			req.ConfigSHA256, err = HashFile(filepath.Join(dir, SystemConfigName), nil)
+			if err != nil {
+				return err
+			}
+			req.SSHEnabled, req.Timezone = snapshot.SSHEnabled, snapshot.Timezone
+		}
 		if err = machine.PrepareBootstrap(dir, req); err != nil {
 			return err
 		}
@@ -238,6 +289,12 @@ func RequestHashes(req *Request, dir string, verify bool, progress Progress) err
 		return fmt.Errorf("unexpected bootstrap hash inventory")
 	}
 
+	if req.ConfigSHA256 != "" {
+		files = append(files, struct {
+			name string
+			hash *string
+		}{SystemConfigName, &req.ConfigSHA256})
+	}
 	var total, offset int64
 	for _, file := range files {
 		s, err := os.Stat(filepath.Join(dir, file.name))
@@ -275,9 +332,6 @@ func RequestHashes(req *Request, dir string, verify bool, progress Progress) err
 // starts, userdata must be retained and only finishing this installation is
 // supported: the old boot files are deliberately not backed up.
 func Arm(d Device, report Reporter) (AccessInfo, error) {
-	if err := CheckInstallTarget("/"); err != nil {
-		return AccessInfo{}, err
-	}
 	if err := d.CanArm(); err != nil {
 		return AccessInfo{}, err
 	}
@@ -296,7 +350,7 @@ func Arm(d Device, report Reporter) (AccessInfo, error) {
 	if req.State == "armed" {
 		return AccessInfo{}, fmt.Errorf("installation already armed; reboot to install")
 	}
-	access, err := preparedAccess(StageDir(d), req.FirstbootSHA256)
+	access, err := preparedRequestAccess(StageDir(d), req)
 	if err != nil {
 		return AccessInfo{}, err
 	}
@@ -322,4 +376,27 @@ func Arm(d Device, report Reporter) (AccessInfo, error) {
 		return AccessInfo{}, err
 	}
 	return access, nil
+}
+
+func PrepareWithConfig(ctx context.Context, d Device, source string, asset *ReleaseAsset, snapshot SystemSnapshot, report Reporter) (Request, error) {
+	return prepare(ctx, d, source, asset, nil, nil, &snapshot, report)
+}
+func PrepareDownloadedWithConfig(ctx context.Context, d Device, image *DownloadedImage, snapshot SystemSnapshot, report Reporter) (Request, error) {
+	if image == nil || !SameDisk(d, image.device) || image.Image.Profile != d.Profile {
+		return Request{}, fmt.Errorf("download does not match the selected target")
+	}
+	return prepare(ctx, d, image.Source, nil, image, nil, &snapshot, report)
+}
+func preparedRequestAccess(dir string, req Request) (AccessInfo, error) {
+	if req.ConfigSHA256 == "" {
+		return preparedAccess(dir, req.FirstbootSHA256)
+	}
+	data, err := loadSystemConfig(dir, req.ConfigSHA256)
+	if err != nil {
+		return AccessInfo{}, err
+	}
+	defer clear(data)
+	sanitized, access, _, err := systemConfiguration(data)
+	clear(sanitized)
+	return access, err
 }

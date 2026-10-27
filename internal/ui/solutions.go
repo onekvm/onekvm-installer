@@ -46,6 +46,10 @@ func (m *model) afterChecks() tea.Cmd {
 		m.goPage(confirmPage)
 		return textinput.Blink
 	case "account":
+		if m.opts.Device.Reinstall {
+			m.goPage(reinstallModePage)
+			return nil
+		}
 		m.goPage(accountPage)
 		return textinput.Blink
 	default:

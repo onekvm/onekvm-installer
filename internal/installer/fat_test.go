@@ -37,6 +37,11 @@ func TestFAT16ExtractionAndCycle(t *testing.T) {
 	if err != nil || string(b) != "1\n" {
 		t.Fatal(string(b), err)
 	}
+	free, err := FatFreeBytes(f)
+	clusters := (36*MiB - 512 - 2*131072 - 16384) / 4096
+	if err != nil || free != int64(clusters-1)*4096 {
+		t.Fatal("incorrect carrier free space", free, err)
+	}
 	if _, err = FatFile(f, "MISSING    ", 16); err == nil {
 		t.Fatal("accepted missing file")
 	}
@@ -46,6 +51,13 @@ func TestFAT16ExtractionAndCycle(t *testing.T) {
 	_, _ = f.WriteAt(fat, 512)
 	if _, err = FatFile(f, "INSTAPI    ", 8192); err == nil {
 		t.Fatal("followed cyclic cluster chain")
+	}
+	for i := range fat {
+		fat[i] = 0xff
+	}
+	_, _ = f.WriteAt(fat, 512)
+	if free, err := FatFreeBytes(f); err != nil || free != 0 {
+		t.Fatal("full FAT reported free restoration space", free, err)
 	}
 }
 

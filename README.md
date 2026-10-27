@@ -69,22 +69,42 @@ The wizard walks through these steps:
 1. Choose the interface language.
 2. Select a GitHub image, an online HTTP(S) image URL, or a local `.img` file.
 3. Validate image metadata, profile, storage type, and SHA-256.
-4. Create the first administrator and choose the time zone.
+4. On OneKVM, choose to preserve system settings or perform a fresh installation.
+   Create the first administrator and choose the time zone for a fresh installation.
 5. Copy or configure Ethernet and Wi-Fi settings independently.
 6. Run the checks and solution hooks for the detected device and image.
 7. Review the target disk and confirm the write.
 8. Write and verify the image, then reboot immediately or later.
 
 The target disk is shown before any destructive operation. Writing an image
-erases the target medium. The installer refuses to install over an existing
-OneKVM system and does not expose Wi-Fi passwords in the confirmation page,
+erases the target medium. Wi-Fi passwords are never exposed in the confirmation page,
 JSON output, or final access summary.
 
+When reinstalling OneKVM, **Preserve system settings** copies the canonical
+system configuration, including accounts, password hashes, MFA, network and
+Wi-Fi settings, SSH public keys and startup policy, video, USB, and time zone.
+It skips account and network initialization. **Fresh installation (initialize)**
+uses the normal setup wizard. Both modes clear installed extensions, extension
+data, extension login bindings, and personal files. External files referenced
+by settings, such as custom certificates, are not copied. Preserving settings
+requires an image of the same or a newer system version.
+
 NanoKVM uses its verified SD-card layout and recovery bootstrap. Pro Desk SD
-is written directly without staging or entering recovery mode, while Pro Desk
+is written directly from the factory system without staging, while Pro Desk
 eMMC stages the image and reboots into recovery. The Pro SD path preserves the
 eMMC boot firmware and U-Boot environment. After installation, `/boot` is
 created with a 128 MiB layout.
+
+Reinstallation on NanoKVM and Pro always stages a self-contained RAM recovery
+environment before erasing the running system. Pro reinstallation uses the
+current boot medium (SD or eMMC); select its matching image. NanoKVM requires
+the image's boot firmware to match the installed FIP and retains that firmware
+when activating recovery. Pro reinstallation leaves U-Boot and its environment
+unchanged. Recovery checks the staged image and configuration again, copies the
+complete image to RAM, and verifies the disk write before applying settings.
+Pro recovery reuses the selected image's early display drivers and artwork to
+show preparation, writing, finishing, and paused states. Images without early
+display support still report installation progress and errors to the console.
 
 NanoKVM recovery uses the matching FIP, kernel and environment from the
 verified OneKVM image. It replaces the previous boot files before rebooting

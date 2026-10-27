@@ -15,6 +15,42 @@ func FatFile(r io.ReaderAt, name string, limit int64) ([]byte, error) {
 	return FatFileProgress(r, name, limit, nil)
 }
 
+// FatFreeBytes counts free data clusters in a builder FAT16 carrier. Configuration
+// preservation checks this before erasing the target; no image mount is needed.
+func FatFreeBytes(r io.ReaderAt) (int64, error) {
+	header := make([]byte, 512)
+	if _, err := r.ReadAt(header, 0); err != nil {
+		return 0, err
+	}
+	u16 := func(i int) int64 { return int64(binary.LittleEndian.Uint16(header[i:])) }
+	cluster, reserved, fats, fatBytes := int64(header[13])*512, u16(14)*512, int64(header[16]), u16(22)*512
+	total := u16(19)
+	if total == 0 {
+		total = int64(binary.LittleEndian.Uint32(header[32:]))
+	}
+	rootBytes := (u16(17)*32 + 511) / 512 * 512
+	if u16(11) != 512 || cluster < 512 || cluster > 65536 || cluster&(cluster-1) != 0 || reserved < 512 ||
+		fats < 1 || fats > 2 || fatBytes < 512 || fatBytes > MiB || rootBytes < 32 || rootBytes > MiB ||
+		total < 32768 || total > 262144 || !bytes.Equal(header[510:], []byte{0x55, 0xaa}) {
+		return 0, fmt.Errorf("unsupported configuration boot filesystem")
+	}
+	clusters := (total*512 - reserved - fats*fatBytes - rootBytes) / cluster
+	if clusters < 1 || clusters >= 0xffee || (clusters+2)*2 > fatBytes {
+		return 0, fmt.Errorf("invalid configuration FAT geometry")
+	}
+	fat := make([]byte, fatBytes)
+	if _, err := r.ReadAt(fat, reserved); err != nil {
+		return 0, err
+	}
+	var free int64
+	for i := int64(2); i < clusters+2; i++ {
+		if binary.LittleEndian.Uint16(fat[i*2:]) == 0 {
+			free += cluster
+		}
+	}
+	return free, nil
+}
+
 func FatFileProgress(r io.ReaderAt, name string, limit int64, progress Progress) ([]byte, error) {
 	b := make([]byte, 512)
 	if _, err := r.ReadAt(b, 0); err != nil {

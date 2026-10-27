@@ -14,8 +14,10 @@ import (
 // installation. It is derived from firstboot.txt, not added to the recovery
 // request format, so existing recovery images remain compatible.
 type AccessInfo struct {
-	Username string
-	Network  Network
+	Username  string
+	Network   Network
+	WebScheme string
+	WebPort   int
 }
 
 func preparedAccess(dir, expectedHash string) (AccessInfo, error) {

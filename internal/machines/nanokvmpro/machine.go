@@ -27,9 +27,26 @@ func proMatches(root string) bool {
 	identity := strings.ToLower(installer.ReadTrim(filepath.Join(root, "proc/device-tree/model")) + " " + installer.ReadTrim(filepath.Join(root, "proc/device-tree/compatible")))
 	return strings.Contains(identity, "nanokvm-pro") || strings.Contains(identity, "nanokvm pro")
 }
-func (m Machine) Matches(root string) bool { return m.media == "emmc" && proMatches(root) }
+func (m Machine) Matches(root string) bool {
+	if !proMatches(root) {
+		return false
+	}
+	installed, _ := installer.InstalledSystem(root)
+	if installed {
+		return m.matchesInstalledMedium(root, installer.RootDisk(root))
+	}
+	return m.media == "emmc"
+}
 
 func (m Machine) Probe(root string) (installer.Device, error) {
+	installed, err := installer.InstalledSystem(root)
+	if err != nil {
+		return installer.Device{}, err
+	}
+	if installed {
+		return m.probeInstalled(root)
+	}
+
 	d := installer.Device{Profile: m.Profile(), Boot: "/dev/mmcblk0p16", BootMount: "/boot", BootStart: proBootStart, BootSectors: proBootSectors,
 		Userdata: "/dev/mmcblk0p17", DataMount: "/", DataType: "ext4"}
 	if !proMatches(root) {
@@ -97,6 +114,9 @@ func (m Machine) Probe(root string) (installer.Device, error) {
 }
 
 func (m Machine) ValidateTarget(d installer.Device) error {
+	if d.Reinstall {
+		return m.validateInstalled(d)
+	}
 	wantDisk, wantMedia := "/dev/mmcblk0", "MMC"
 	if m.media == "sd" {
 		wantDisk, wantMedia = "/dev/mmcblk1", "SD"
@@ -116,6 +136,10 @@ func (m Machine) CheckDisk(d installer.Device) error {
 	return checkProDisk(d)
 }
 func checkProDisk(d installer.Device) error {
+	if d.Reinstall {
+		return checkInstalledDisk(d)
+	}
+
 	for _, identity := range []struct {
 		disk, cid, media string
 		bytes            int64
@@ -154,10 +178,18 @@ func (m Machine) ActivateRecovery(d installer.Device, req installer.Request, rep
 	return activateProRecovery(d, req, report)
 }
 func (m Machine) Recover(report installer.Reporter) (bool, error) {
-	if m.media != "emmc" || !proMatches("/") || installer.CmdlineValue(installer.ReadTrim("/proc/cmdline"), "root") != "/dev/mmcblk0p17" {
+	if !proMatches("/") {
 		return false, nil
 	}
-	return installer.RecoverMMC("/dev/mmcblk0p16", report)
+	root := installer.CmdlineValue(installer.ReadTrim("/proc/cmdline"), "root")
+	if m.media == "emmc" && root == "/dev/mmcblk0p17" {
+		return installer.RecoverMMC("/dev/mmcblk0p16", report)
+	}
+	disk := installer.ParentDisk(root)
+	if !m.matchesInstalledMedium("/", disk) {
+		return false, nil
+	}
+	return installer.RecoverMMC(disk+"p1", report)
 }
 func (m Machine) WritePayload(target io.ReadWriteSeeker, source io.Reader, info installer.Image, p installer.Progress) error {
 	if info.Profile != m.Profile() {
@@ -184,6 +216,9 @@ func (Machine) Family() string { return "nanokvm-pro" }
 func (m Machine) Direct() bool { return m.media == "sd" }
 
 func (m Machine) FinalizeRecovery(d installer.Device) error {
+	if d.Reinstall {
+		return nil
+	}
 	if m.media != "emmc" {
 		return fmt.Errorf("unexpected recovery medium")
 	}

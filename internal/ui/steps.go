@@ -27,7 +27,7 @@ func newTaskStatus(kind, label string, download bool) *taskStatus {
 	case "download", "remote-download":
 		keys = []string{"op.download", "op.verify"}
 	case "prepare", "prepare-downloaded":
-		keys = []string{"op.prepare", "op.cleanup"}
+		keys = []string{label, "op.cleanup"}
 		if download && kind != "prepare-downloaded" {
 			keys = append(keys, "op.download")
 		}

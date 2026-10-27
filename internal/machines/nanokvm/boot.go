@@ -78,6 +78,12 @@ func planBootstrap(d installer.Device, req installer.Request) (bootstrapPlan, er
 	if p.fipName == "" {
 		return p, fmt.Errorf("boot FIP is missing; refusing to clear boot files")
 	}
+	if d.Reinstall {
+		hash, err := installer.HashFile(filepath.Join(d.BootMount, p.fipName), nil)
+		if err != nil || hash != req.BootFiles["fip.bin"] {
+			return p, fmt.Errorf("boot firmware changed since preparation")
+		}
+	}
 	p.request.State = "armed"
 	p.requestBytes, err = installer.JsonBytes(p.request)
 	if err != nil {
@@ -153,6 +159,11 @@ func replaceBootstrap(p bootstrapPlan, report installer.Reporter) error {
 			// Replace firmware last: Recovery must use the matching OneKVM
 			// bootloader, independently of the previously installed system.
 			{"fip.bin", p.fipName, req.BootFiles["fip.bin"]},
+		}
+		if d.Reinstall {
+			// PrepareReinstall checked equality with the image. Recheck before
+			// deleting boot files, and retain the original FIP throughout.
+			files = files[:2]
 		}
 		var total, offset int64
 		for _, file := range files {

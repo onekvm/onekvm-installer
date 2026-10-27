@@ -53,8 +53,7 @@ func (m Machine) Probe(root string) (installer.Device, error) {
 	d.HardwareModel = HardwareModel(root)
 	// The verified SG200x ROM/SPL chain boots mmc0. An external card or
 	// a mounted FAT under NFS does not establish the source of the kernel.
-	rootdev := installer.CmdlineValue(installer.ReadTrim(filepath.Join(root, "proc/cmdline")), "root")
-	d.Automatic = d.Disk == "/dev/mmcblk0" && installer.ParentDisk(rootdev) == d.Disk
+	d.Automatic = d.Disk == "/dev/mmcblk0" && installer.RootDisk(root) == d.Disk
 	return d, nil
 }
 

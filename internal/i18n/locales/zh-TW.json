@@ -54,6 +54,7 @@
   "confirm.warning": "安裝將清除 %s（%s · %.1f GiB）上的所有資料。\n目前系統和個人檔案都會被刪除，請先備份。",
   "confirm.label": "輸入 ERASE %s 確認",
   "confirm.note": "確認後將直接取代原有的開機檔案，重新啟動後自動開始安裝。\n安裝期間請保持供電。",
+  "confirm.reinstall.note": "重新安裝將刪除目前 OneKVM 的設定、帳號、擴充功能和個人檔案。\n新系統使用本次精靈設定的帳號和網路。",
   "armed.title": "復原安裝已啟用",
   "armed.summary": "下次重新啟動將開始安裝並清除目標磁碟。",
   "reboot.later": "稍後重新啟動",
@@ -140,7 +141,6 @@
   "help.language": "↑/↓ 選擇 · Enter 繼續 · Ctrl+C 離開",
   "flag.version": "顯示安裝程式版本",
   "value.sd": "SD 卡",
-  "diagnostic.installed": "目前已是 OneKVM 系統，請使用系統更新。",
   "prepared.build": "組建：%s",
   "op.finalize": "儲存並檢查安裝檔案",
   "op.cleanup": "重建暫存目錄",
@@ -279,5 +279,15 @@
   "solutions.repair.confirm.note": "請核對裝置、寫入範圍與校驗值，確認後才會寫入。",
   "solutions.repair.complete": "修復已完成，請重新檢查後再繼續。",
   "solutions.help.compact": "ctrl+c 離開 · Tab · ↑/↓ · Enter · PgDn · Esc",
-  "solutions.help.review": "Tab 切換區域 · ↑/↓ 選擇或捲動 · ←/→ 選擇操作 · Enter 確認 · PgUp/PgDn 捲動 · Esc 返回 · ctrl+c 離開"
+  "solutions.help.review": "Tab 切換區域 · ↑/↓ 選擇或捲動 · ←/→ 選擇操作 · Enter 確認 · PgUp/PgDn 捲動 · Esc 返回 · ctrl+c 離開",
+  "reinstall.title": "重新安裝 OneKVM",
+  "reinstall.stage.desc": "準備映像並保留目前系統設定",
+  "reinstall.prepare": "準備保留系統設定重裝",
+  "reinstall.help": "選擇新系統的設定方式。",
+  "reinstall.preserve": "保留系統設定重新安裝",
+  "reinstall.preserve.desc": "複製帳號和系統設定，清除擴充功能和個人檔案。",
+  "reinstall.fresh": "全新安裝（初始化）",
+  "reinstall.fresh.desc": "重新建立管理員並設定新系統。",
+  "reinstall.preserve.review": "將還原系統設定、帳號和金鑰；已安裝擴充功能、擴充功能資料和個人檔案會被清除。",
+  "op.config_snapshot": "正在複製系統設定"
 }

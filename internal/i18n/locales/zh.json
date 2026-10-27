@@ -54,6 +54,7 @@
   "confirm.warning": "安装将清除 %s（%s · %.1f GiB）上的全部数据。\n当前系统和个人文件均会被删除，请先备份。",
   "confirm.label": "输入 ERASE %s 确认",
   "confirm.note": "确认后将直接替换旧引导，重启后自动开始安装。\n安装期间请保持供电。",
+  "confirm.reinstall.note": "重装将删除当前 OneKVM 的配置、账号、扩展和个人文件。\n新系统使用本次向导设置的账号和网络。",
   "armed.title": "恢复安装已启用",
   "armed.summary": "下次重启将开始安装并擦除目标磁盘。",
   "reboot.later": "稍后重启",
@@ -140,7 +141,6 @@
   "help.language": "↑/↓ Select / 选择 · Enter / 回车 · Ctrl+C Exit / 退出",
   "flag.version": "显示安装器版本",
   "value.sd": "SD 卡",
-  "diagnostic.installed": "当前已是 OneKVM 系统，请使用系统更新。",
   "prepared.build": "构建：%s",
   "op.finalize": "保存并检查安装文件",
   "op.cleanup": "重建暂存目录",
@@ -279,5 +279,15 @@
   "solutions.repair.confirm.note": "请核对设备、写入范围与校验值，确认后才会写入。",
   "solutions.repair.complete": "修复已完成，请重新检查后再继续。",
   "solutions.help.compact": "ctrl+c 退出 · Tab · ↑/↓ · Enter · PgDn · Esc",
-  "solutions.help.review": "Tab 切换区域 · ↑/↓ 选择或滚动 · ←/→ 选择操作 · Enter 确认 · PgUp/PgDn 滚动 · Esc 返回 · ctrl+c 退出"
+  "solutions.help.review": "Tab 切换区域 · ↑/↓ 选择或滚动 · ←/→ 选择操作 · Enter 确认 · PgUp/PgDn 滚动 · Esc 返回 · ctrl+c 退出",
+  "reinstall.title": "重装 OneKVM",
+  "reinstall.stage.desc": "准备镜像并保留当前系统配置",
+  "reinstall.prepare": "准备保留系统配置重装",
+  "reinstall.help": "选择新系统的配置方式。",
+  "reinstall.preserve": "保留系统配置重装",
+  "reinstall.preserve.desc": "复制账号和系统设置，清除扩展和个人文件。",
+  "reinstall.fresh": "全新安装（初始化）",
+  "reinstall.fresh.desc": "重新创建管理员并配置新系统。",
+  "reinstall.preserve.review": "将恢复系统配置、账号和密钥；已装扩展、扩展数据和个人文件会被清除。",
+  "op.config_snapshot": "正在复制系统配置"
 }

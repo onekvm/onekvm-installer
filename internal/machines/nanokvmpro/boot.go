@@ -75,6 +75,9 @@ func proScript(text string) ([]byte, error) {
 	return append(header, data...), nil
 }
 func bindProBootstrap(dir string, req installer.Request) error {
+	if req.Device.Reinstall {
+		return bindReinstallBootstrap(dir, req)
+	}
 	if req.Device.Profile != "pro-emmc" || len(req.Token) != 64 {
 		return fmt.Errorf("invalid Pro installation bootstrap")
 	}
@@ -114,6 +117,9 @@ func bindProBootstrap(dir string, req installer.Request) error {
 }
 
 func activateProRecovery(d installer.Device, req installer.Request, report installer.Reporter) error {
+	if d.Profile == "pro-sd" && d.Reinstall {
+		return activateSDReinstall(d, req, report)
+	}
 	if d.Profile != "pro-emmc" {
 		return fmt.Errorf("SD installation must use the direct writer")
 	}
@@ -123,6 +129,9 @@ func activateProRecovery(d installer.Device, req installer.Request, report insta
 			return err
 		}
 		var err error
+		if d.Reinstall {
+			return nil
+		}
 		env, err = proReadEnvironment()
 		return err
 	})
@@ -180,6 +189,9 @@ func activateProRecovery(d installer.Device, req installer.Request, report insta
 	})
 	if err != nil {
 		return incomplete(err)
+	}
+	if d.Reinstall {
+		return nil
 	}
 	err = report("op.boot_activate", func(installer.Progress) error { return proSavePolicy(d, env, true) })
 	if err != nil {

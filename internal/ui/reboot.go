@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -39,7 +41,17 @@ func (m *model) accessMessage() string {
 	lines := []string{t("done.access.title")}
 	if n.Mode == "static" {
 		if prefix, err := netip.ParsePrefix(n.Address); err == nil {
-			lines = append(lines, t("done.access.url", "https://"+prefix.Addr().String()+"/"))
+			scheme, defaultPort := "https", 443
+			if m.access.WebScheme == "http" {
+				scheme, defaultPort = "http", 80
+			}
+			host := prefix.Addr().String()
+			if port := m.access.WebPort; port > 0 && port <= 65535 && port != defaultPort {
+				host = net.JoinHostPort(host, strconv.Itoa(port))
+			} else if prefix.Addr().Is6() {
+				host = "[" + host + "]"
+			}
+			lines = append(lines, t("done.access.url", scheme+"://"+host+"/"))
 		}
 	} else if n.Mode == "dhcp" {
 		lines = append(lines, t("done.access.dhcp"))

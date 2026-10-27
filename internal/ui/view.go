@@ -105,6 +105,8 @@ func (m *model) View() string {
 	case assetsPage:
 		title = t("assets.title")
 		hint = clean(m.opts.Catalog[d.Profile] + " · " + m.release.Tag)
+	case reinstallModePage:
+		title, hint = t("reinstall.title"), t("reinstall.help")
 	case accountPage:
 		title, hint = t("account.title"), t("account.help")
 	case timezonePage:
@@ -154,6 +156,9 @@ func (m *model) View() string {
 			body += clean(t("wifi.review", strings.Join(names, ", "))) + "\n\n"
 		}
 		hint = t("review.help")
+		if m.systemSnapshot != nil {
+			hint = t("reinstall.preserve.review")
+		}
 		body += clean(t("review.target", d.Disk, media, float64(d.Bytes)/(1024*installer.MiB))) + "\n\n"
 		if installer.DirectInstall(d) {
 			hint = t("review.direct.help")
@@ -169,6 +174,12 @@ func (m *model) View() string {
 		title = t("confirm.title")
 		hint = danger.Render(t("confirm.warning", d.Disk, media, float64(d.Bytes)/(1024*installer.MiB)))
 		body = t("confirm.note") + "\n\n"
+		if d.Reinstall {
+			body = t("confirm.reinstall.note") + "\n\n"
+			if m.systemSnapshot != nil || m.req.ConfigSHA256 != "" {
+				body = t("reinstall.preserve.review") + "\n\n"
+			}
+		}
 		if installer.DirectInstall(d) {
 			body = t("confirm.direct.note") + "\n\n"
 		}

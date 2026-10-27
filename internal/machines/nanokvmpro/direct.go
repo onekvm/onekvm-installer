@@ -81,11 +81,11 @@ func streamSD(target io.ReadWriteSeeker, source io.Reader, size int64, digest st
 
 func (m Machine) InstallDirect(ctx context.Context, d installer.Device, source string, asset *installer.ReleaseAsset, firstboot []byte, report installer.Reporter) (installer.AccessInfo, error) {
 	var access installer.AccessInfo
+	if d.Reinstall {
+		return access, fmt.Errorf("reinstallation requires recovery")
+	}
 	if m.media != "sd" {
 		return access, fmt.Errorf("eMMC installation requires recovery")
-	}
-	if err := installer.CheckInstallTarget("/"); err != nil {
-		return access, err
 	}
 	var local installer.Image
 	var localFile *os.File

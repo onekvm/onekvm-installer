@@ -54,6 +54,7 @@
   "confirm.warning": "Installing OneKVM will erase all data on %s (%s · %.1f GiB).\nBack up your current system and personal files before continuing.",
   "confirm.label": "Type ERASE %s to confirm",
   "confirm.note": "Confirming directly replaces the old boot files. Installation starts after reboot.\nKeep power connected during installation.",
+  "confirm.reinstall.note": "Reinstallation removes the current OneKVM settings, accounts, extensions and personal files.\nThe new system will use the account and network settings chosen in this wizard.",
   "armed.title": "Recovery installation armed",
   "armed.summary": "The next reboot starts installation and erases the target disk.",
   "reboot.later": "Reboot later",
@@ -140,7 +141,6 @@
   "help.language": "↑/↓ Select / 选择 · Enter / 回车 · Ctrl+C Exit / 退出",
   "flag.version": "Show installer version",
   "value.sd": "SD card",
-  "diagnostic.installed": "OneKVM is already installed. Use the system updater.",
   "prepared.build": "Build: %s",
   "op.finalize": "Saving and checking installation files",
   "op.cleanup": "Recreating staging directory",
@@ -279,5 +279,15 @@
   "solutions.repair.confirm.note": "Review the device, write range and checksums. Writing requires confirmation.",
   "solutions.repair.complete": "Repair completed. Check again before continuing.",
   "solutions.help.compact": "ctrl+c exit · Tab · arrows · Enter · PgDn · Esc",
-  "solutions.help.review": "Tab switch area · ↑/↓ select/scroll · ←/→ actions · Enter confirm · PgUp/PgDn scroll · Esc back · ctrl+c exit"
+  "solutions.help.review": "Tab switch area · ↑/↓ select/scroll · ←/→ actions · Enter confirm · PgUp/PgDn scroll · Esc back · ctrl+c exit",
+  "reinstall.title": "Reinstall OneKVM",
+  "reinstall.help": "Choose how to configure the new system.",
+  "reinstall.stage.desc": "Prepare the image and preserve the current system settings",
+  "reinstall.prepare": "Preparing reinstallation with current system settings",
+  "reinstall.preserve": "Keep system configuration",
+  "reinstall.preserve.desc": "Copy accounts and system settings; remove extensions and personal files.",
+  "reinstall.fresh": "Fresh installation (initialize)",
+  "reinstall.fresh.desc": "Create a new administrator and configure the new system.",
+  "reinstall.preserve.review": "System configuration, accounts and keys will be restored. Extensions, extension data and personal files will be removed.",
+  "op.config_snapshot": "Copying system configuration"
 }

@@ -14,6 +14,10 @@ import (
 const bootstrapAPI = 3
 
 func extractBootstrap(image, dir string, progress installer.Progress) error {
+	return extractBootstrapFor(image, dir, progress, false)
+}
+
+func extractBootstrapFor(image, dir string, progress installer.Progress, reinstall bool) error {
 	r, err := os.Open(image)
 	if err != nil {
 		return err
@@ -40,16 +44,18 @@ func extractBootstrap(image, dir string, progress installer.Progress) error {
 	if total != sectors {
 		return fmt.Errorf("boot filesystem does not match carrier partition")
 	}
-	api, err := installer.FatFile(f, "INSTAPI    ", 16)
-	if err != nil {
-		return err
-	}
-	if string(api) != fmt.Sprintf("%d\n", bootstrapAPI) {
-		return fmt.Errorf("unsupported installation recovery API")
-	}
-	grow, err := installer.FatFile(f, "BOOTGROW   ", 16)
-	if err != nil || string(grow) != "128\n" {
-		return fmt.Errorf("image lacks the 128 installer.MiB installed boot layout marker")
+	if !reinstall {
+		api, err := installer.FatFile(f, "INSTAPI    ", 16)
+		if err != nil {
+			return err
+		}
+		if string(api) != fmt.Sprintf("%d\n", bootstrapAPI) {
+			return fmt.Errorf("unsupported installation recovery API")
+		}
+		grow, err := installer.FatFile(f, "BOOTGROW   ", 16)
+		if err != nil || string(grow) != "128\n" {
+			return fmt.Errorf("image lacks the 128 installer.MiB installed boot layout marker")
+		}
 	}
 	kernel, err := installer.FatFileProgress(f, "BOOT    SD ", 16*installer.MiB, progress)
 	if err != nil {

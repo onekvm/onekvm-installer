@@ -2,23 +2,19 @@ package installer
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-var ErrAlreadyInstalled = errors.New("OneKVM is already installed; use the system updater")
-
-// CheckInstallTarget only guards new installations. Read-only commands,
-// cancellation and initramfs recovery must remain available.
-func CheckInstallTarget(root string) error {
+// InstalledSystem detects OneKVM without relying on vendor board markers.
+func InstalledSystem(root string) (bool, error) {
 	data, err := os.ReadFile(filepath.Join(root, "etc/os-release"))
 	if os.IsNotExist(err) {
 		data, err = os.ReadFile(filepath.Join(root, "usr/lib/os-release"))
 	}
 	if err != nil && !os.IsNotExist(err) {
-		return err
+		return false, err
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
@@ -30,18 +26,18 @@ func CheckInstallTarget(root string) error {
 			value = value[1 : len(value)-1]
 		}
 		if value == "onekvm" {
-			return ErrAlreadyInstalled
+			return true, nil
 		}
 	}
 	// Older installations can retain a vendor os-release. These identity
 	// files are supplied by OneKVM, independently of the vendor board markers.
 	if ReadTrim(filepath.Join(root, "usr/share/onekvm/machine")) != "" {
-		return ErrAlreadyInstalled
+		return true, nil
 	}
 	var identity MachineIdentity
 	if data, err := os.ReadFile(filepath.Join(root, "usr/share/onekvm/machine.json")); err == nil &&
 		json.Unmarshal(data, &identity) == nil && identity.Machine != "" {
-		return ErrAlreadyInstalled
+		return true, nil
 	}
-	return nil
+	return false, nil
 }

@@ -2,120 +2,98 @@
 
 English | [简体中文](README.zh-CN.md)
 
-OneKVM Installer is a standalone Go and Bubble Tea installer and recovery
-utility. It can download or validate a OneKVM `.img`, collect first-boot
-settings, write the image to the correct storage device, and verify the
-result. The installer supports English, Simplified Chinese, and Traditional
-Chinese and does not require Go or Python on the target device.
-
-> **Build note:** This repository is an independent Go project. Release
-> packages are built by GitHub Actions.
+Install or reinstall OneKVM from the device. The installer downloads or checks
+a `.img`, collects first-boot settings, writes the matching storage, and
+verifies the result. Languages: English, Simplified Chinese, and Traditional
+Chinese.
 
 ## Supported devices
 
-| Device family | Architecture | Image profile | Installation target |
+| Device | Architecture | Profile | Target |
 | --- | --- | --- | --- |
 | NanoKVM SG200x (Cube, PCIe, Lite) | `riscv64` | `nanokvm` | SD card |
-| NanoKVM Pro Desk | `arm64` | `pro-sd` | Direct SD-card write |
-| NanoKVM Pro Desk | `arm64` | `pro-emmc` | Staged eMMC recovery install |
+| NanoKVM Pro Desk | `arm64` | `pro-sd` | SD card, written directly |
+| NanoKVM Pro Desk | `arm64` | `pro-emmc` | eMMC, through recovery |
 
-NanoKVM Pro PCIe is not currently available because its matching device-tree
-and image are not included. The Pro SD path requires a device with the
-matching SPL support; the installer checks this before writing.
+NanoKVM Pro PCIe cannot be installed yet. This repository does not include its
+device tree or image. A Pro SD install needs matching SPL support. The
+installer checks that before writing.
 
-## Install from a device shell
-
-Run as root:
+## Install
 
 ```sh
-curl -fsSL https://onekvm.sh | sh
+curl -fsSL onekvm.sh | sh
 ```
 
-If the current shell is not root, run the shell on the right side of the pipe
-with `sudo`:
+The script selects the `riscv64` or `arm64` package from the
+[latest Release](https://github.com/onekvm/onekvm-installer/releases/latest),
+checks its SHA-256, and starts the installer.
+
+Use a chosen image:
 
 ```sh
-curl -fsSL https://onekvm.sh | sudo sh
-```
-
-The bootstrap script detects `riscv64` or `arm64`, downloads the
-matching package from the [latest GitHub Release](https://github.com/onekvm/onekvm-installer/releases/latest),
-and verifies its SHA-256 checksum before starting the installer.
-
-To install from an image URL, pass installer arguments after `sh -s --`:
-
-```sh
-curl -fsSL https://onekvm.sh \
+curl -fsSL onekvm.sh \
   | sh -s -- install --url 'https://mirror.example/onekvm-nanokvm.img'
 ```
 
-For a non-root shell, use `sudo sh -s -- install --url 'https://…'` on the
-right side of the pipe. To mirror the installer package itself, set the
-variable on the shell side of the pipe:
+Download the installer package from another host:
 
 ```sh
-curl -fsSL https://onekvm.sh \
+curl -fsSL onekvm.sh \
   | ONEKVM_INSTALLER_RELEASE_URL=https://mirror.example/installer sh
 ```
 
-The device needs Linux, `curl`, and the common commands used by the
-bootstrap script (`uname`, `mktemp`, `awk`, `sha256sum`, `tar`, `chmod`, and
-`rm`). Installation itself must run as root.
+The device needs Linux and these commands: `curl`, `uname`, `mktemp`, `awk`,
+`sha256sum`, `tar`, `chmod`, and `rm`.
 
-## Installation flow
+## Installer steps
 
-The wizard walks through these steps:
+1. Choose a language.
+2. Choose a GitHub image, an HTTP(S) URL, or a local `.img`.
+3. Check metadata, profile, storage type, and SHA-256.
+4. On an existing OneKVM system, keep the current settings or start fresh.
+   A fresh install creates the administrator and sets the time zone.
+5. Set Ethernet and Wi-Fi on separate pages.
+6. Check the device and the selected image.
+7. Confirm the target disk.
+8. Write the image, verify it, then reboot now or later.
 
-1. Choose the interface language.
-2. Select a GitHub image, an online HTTP(S) image URL, or a local `.img` file.
-3. Validate image metadata, profile, storage type, and SHA-256.
-4. On OneKVM, choose to preserve system settings or perform a fresh installation.
-   Create the first administrator and choose the time zone for a fresh installation.
-5. Copy or configure Ethernet and Wi-Fi settings independently.
-6. Run the checks and solution hooks for the detected device and image.
-7. Review the target disk and confirm the write.
-8. Write and verify the image, then reboot immediately or later.
+The target disk is shown before it is erased. Writing clears that disk.
+Wi-Fi passwords are omitted from the confirmation page, JSON output, and the
+final access summary.
 
-The target disk is shown before any destructive operation. Writing an image
-erases the target medium. Wi-Fi passwords are never exposed in the confirmation page,
-JSON output, or final access summary.
+### Reinstall
 
-When reinstalling OneKVM, **Preserve system settings** copies the canonical
-system configuration, including accounts, password hashes, MFA, network and
-Wi-Fi settings, SSH public keys and startup policy, video, USB, and time zone.
-It skips account and network initialization. **Fresh installation (initialize)**
-uses the normal setup wizard. Both modes clear installed extensions, extension
-data, extension login bindings, and personal files. External files referenced
-by settings, such as custom certificates, are not copied. Preserving settings
-requires an image of the same or a newer system version.
+| Mode | Result |
+| --- | --- |
+| Keep system settings | Keeps accounts, passwords, MFA, network, Wi-Fi, SSH public keys and their startup policy, video, USB, and time zone. Skips account and network setup. The image must be the same version or newer. |
+| Fresh installation | Sets up the account, time zone, and network again. |
 
-NanoKVM uses its verified SD-card layout and recovery bootstrap. Pro Desk SD
-is written directly from the factory system without staging, while Pro Desk
-eMMC stages the image and reboots into recovery. The Pro SD path preserves the
-eMMC boot firmware and U-Boot environment. After installation, `/boot` is
-created with a 128 MiB layout.
+Both modes remove installed extensions, extension data, extension login
+bindings, and personal files. External files referenced by settings, such as
+custom certificates, are left in place.
 
-Reinstallation on NanoKVM and Pro always stages a self-contained RAM recovery
-environment before erasing the running system. Pro reinstallation uses the
-current boot medium (SD or eMMC); select its matching image. NanoKVM requires
-the image's boot firmware to match the installed FIP and retains that firmware
-when activating recovery. Pro reinstallation leaves U-Boot and its environment
-unchanged. Recovery checks the staged image and configuration again, copies the
-complete image to RAM, and verifies the disk write before applying settings.
-Pro recovery reuses the selected image's early display drivers and artwork to
-show preparation, writing, finishing, and paused states. Images without early
-display support still report installation progress and errors to the console.
+### Devices
 
-NanoKVM recovery uses the matching FIP, kernel and environment from the
-verified OneKVM image. It replaces the previous boot files before rebooting
-into recovery, then writes the complete image from RAM. The existing boot
-partition is checked against the required file capacity, without a fixed size
-list or assumptions about the previous system's boot configuration.
+- NanoKVM writes the SD card. Reinstall prepares a recovery system in RAM,
+  replaces the old boot files with the image's matching FIP, kernel, and
+  environment, reboots, and writes the full image from RAM. The image FIP must
+  match the firmware already on the device. Recovery keeps that FIP.
+- From the factory system, Pro Desk writes an SD image directly and keeps the
+  eMMC boot firmware and U-Boot environment. An eMMC image is staged first.
+  The device then reboots into recovery.
+- Pro reinstalls the medium it booted from. Choose the matching SD or eMMC
+  image. U-Boot and its environment stay unchanged.
+- Recovery checks the image and settings again, loads the full image into RAM,
+  verifies the written disk, then applies the settings.
+- Pro shows preparation, writing, finishing, and paused states on screen when
+  the image includes early display support. Otherwise progress and errors go
+  to the serial console.
+- `/boot` is 128 MiB after installation.
 
-## Command-line inspection and diagnostics
+## Commands
 
-Running the binary without a command opens the interactive wizard. The
-following commands are read-only unless explicitly stated:
+`onekvm-installer` with no command opens the wizard. These commands only read:
 
 ```sh
 ./onekvm-installer inspect
@@ -127,19 +105,17 @@ following commands are read-only unless explicitly stated:
 ./onekvm-installer solution --image /data/OneKVM.img --json
 ```
 
-The install and prepare commands also accept a direct HTTP(S) image URL. The
-installer downloads it into its temporary workspace, then applies the same
-metadata, profile, capacity, and SHA-256 checks as a local image:
+`install` and `prepare` accept an image URL. The file is downloaded to a
+temporary directory and checked like a local image:
 
 ```sh
 ./onekvm-installer install --url https://mirror.example/onekvm-nanokvm.img
 ./onekvm-installer prepare --mirror https://mirror.example/onekvm-nanokvm.img
 ```
 
-`inspect`, `network`, `releases`, and `verify` print machine-readable JSON.
-`solution` checks the current device or a local image and reports blocking
-issues together with available repairs. In a non-interactive terminal,
-`--image` is required. A repair can be inspected without applying it:
+`inspect`, `network`, `releases`, and `verify` print JSON. `solution` checks
+the current device or a local image and lists blocking problems and repairs.
+A non-interactive run needs `--image`. Preview a repair before writing:
 
 ```sh
 ./onekvm-installer solution \
@@ -148,15 +124,15 @@ issues together with available repairs. In a non-interactive terminal,
   --json
 ```
 
-An interactive repair always displays its scope and asks for confirmation
-before writing firmware. Use `--lang auto|en|zh|zh-TW` to select the language;
-`auto` follows the system locale.
+An interactive repair shows its scope and asks before writing firmware.
+`--lang auto|en|zh|zh-TW` selects the language. `auto` follows the system
+locale.
 
 ## Development
 
-The project requires Go 1.23 or newer, `make`, and standard Linux shell
-utilities. Dependencies are vendored, and the Makefile disables the parent Go
-workspace automatically.
+This repository is a standalone Go project. It needs Go 1.23 or newer, `make`,
+and a normal Linux shell. Dependencies are vendored. The Makefile disables the
+parent Go workspace.
 
 ```sh
 make help       # List targets
@@ -167,7 +143,7 @@ make release    # Build Linux riscv64 and arm64 binaries
 make package    # Create dist/v<VERSION>/ release assets
 ```
 
-For a direct cross-build, for example for NanoKVM:
+Cross-build for NanoKVM:
 
 ```sh
 CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 \
@@ -175,27 +151,21 @@ CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 \
   -o dist/onekvm-installer ./cmd/onekvm-installer
 ```
 
-Machine-specific implementations live under `internal/machines`; shared
-installation logic is in `internal/installer`. The `onekvm_test` build tag
-enables all machine implementations for host-side tests.
+Machine code is in `internal/machines`. Shared install code is in
+`internal/installer`. The `onekvm_test` build tag enables every machine for
+host tests.
 
 ## Release
 
-GitHub Actions runs checks and packages on pushes and pull requests. A `v*`
-tag whose version matches `internal/buildinfo/version.go` publishes a Release
-containing Linux `riscv64` and `arm64` executables, a separate
-`THIRD_PARTY_NOTICES.txt`, `SHA256SUMS`, and `onekvm.sh`. Serving the published `onekvm.sh` as
-`https://onekvm.sh` enables the one-line entry point.
+GitHub Actions checks and packages pushes and pull requests. A `v*` tag that
+matches `internal/buildinfo/version.go` publishes Linux `riscv64` and `arm64`
+binaries, `THIRD_PARTY_NOTICES.txt`, `SHA256SUMS`, and `onekvm.sh`.
 
-The release workflow can also deploy the optional Cloudflare Worker in
-[`cloudflare-worker`](cloudflare-worker/README.md). It embeds the verified
-`onekvm.sh` asset from each published Release, serves it to `curl`,
-and redirects other user agents to the project page. For requests identified by
-Cloudflare as originating in China, the returned script uses the Worker as a
-fixed proxy for the release checksums and installer binary; those assets are
-cached by the release manifest hash and asset URL.
+`https://onekvm.sh` serves that script. The optional
+[Cloudflare Worker](cloudflare-worker/README.md) returns it to `curl` and
+redirects other clients to the project page. Requests Cloudflare marks as
+China download the checksums and installer binary through the Worker.
 
 ## License
 
-This project is licensed under the GNU General Public License v3.0. See
-[`LICENSE`](LICENSE).
+GNU General Public License v3.0. See [`LICENSE`](LICENSE).

@@ -81,7 +81,10 @@ func (Machine) MatchesImage(name string) bool {
 }
 
 func (Machine) ExtractBootstrap(image, destination string, progress installer.Progress) error {
-	return extractBootstrap(image, destination, progress)
+	if err := extractBootstrap(image, destination, progress); err != nil {
+		return err
+	}
+	return prepareRecovery(destination)
 }
 
 func (Machine) ActivateRecovery(d installer.Device, req installer.Request, report installer.Reporter) error {

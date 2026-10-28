@@ -13,7 +13,7 @@ import (
 )
 
 func (Machine) PrepareReinstall(image, dir string, req installer.Request, p installer.Progress) error {
-	if err := extractBootstrapFor(image, dir, p, true); err != nil {
+	if err := extractBootstrap(image, dir, p); err != nil {
 		return err
 	}
 	stagedFIP, err := installer.HashFile(filepath.Join(dir, "fip.bin"), nil)
@@ -27,6 +27,12 @@ func (Machine) PrepareReinstall(image, dir string, req installer.Request, p inst
 	if stagedFIP != currentFIP {
 		return fmt.Errorf("reinstallation requires an image with the same boot firmware; refusing to replace U-Boot")
 	}
+	return prepareRecovery(dir)
+}
+
+// Both factory installs and reinstalls boot this client as PID 1. Images only
+// supply the matching kernel, DTB and FIP; no image-embedded installer is needed.
+func prepareRecovery(dir string) error {
 	ramdisk, err := installer.RecoveryInitramfs()
 	if err != nil {
 		return err

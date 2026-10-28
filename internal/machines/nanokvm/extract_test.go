@@ -3,7 +3,6 @@ package nanokvm
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,8 +11,8 @@ import (
 )
 
 func TestExtractCompactBootstrap(t *testing.T) {
-	for _, invalid := range []string{"", "missing-marker", "size-mismatch", "old-api"} {
-		t.Run(invalid, func(t *testing.T) {
+	for _, variant := range []string{"without-installer-markers", "legacy-api", "size-mismatch", "invalid-fit", "missing-fip"} {
+		t.Run(variant, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "compact.img")
 			f, err := os.Create(path)
 			if err != nil {
@@ -34,7 +33,7 @@ func TestExtractCompactBootstrap(t *testing.T) {
 			binary.LittleEndian.PutUint16(header[17:], 512)
 			binary.LittleEndian.PutUint16(header[22:], 256)
 			sectors := uint32(36 * 2048)
-			if invalid == "size-mismatch" {
+			if variant == "size-mismatch" {
 				sectors = 128 * 2048
 			}
 			binary.LittleEndian.PutUint32(header[32:], sectors)
@@ -43,21 +42,25 @@ func TestExtractCompactBootstrap(t *testing.T) {
 			fat, directory := make([]byte, 131072), make([]byte, 16384)
 			kernel := make([]byte, 8192)
 			binary.BigEndian.PutUint32(kernel, 0xd00dfeed)
+			if variant == "invalid-fit" {
+				kernel[0] = 0
+			}
 			entries := []struct {
 				name string
 				data []byte
 			}{
-				{"INSTAPI    ", []byte(fmt.Sprintf("%d\n", bootstrapAPI))},
-				{"BOOTGROW   ", []byte("128\n")},
 				{"BOOT    SD ", kernel},
 				{"FIP     BIN", []byte("OneKVM boot firmware")},
 				{"UENV    TXT", []byte("bootfile=boot.sd\n")},
 			}
-			if invalid == "missing-marker" {
+			if variant == "missing-fip" {
 				entries[1].name = "UNKNOWN    "
 			}
-			if invalid == "old-api" {
-				entries[0].data = []byte("2\n")
+			if variant == "legacy-api" {
+				entries = append(entries, struct {
+					name string
+					data []byte
+				}{"INSTAPI    ", []byte("2\n")})
 			}
 			current := uint16(2)
 			for i, entry := range entries {
@@ -87,7 +90,7 @@ func TestExtractCompactBootstrap(t *testing.T) {
 				}
 				last = done
 			})
-			if invalid != "" {
+			if variant == "size-mismatch" || variant == "invalid-fit" || variant == "missing-fip" {
 				if err == nil {
 					t.Fatal("accepted invalid bootstrap")
 				}

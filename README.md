@@ -75,10 +75,11 @@ custom certificates, are left in place.
 
 ### Devices
 
-- NanoKVM writes the SD card. Reinstall prepares a recovery system in RAM,
+- NanoKVM writes the SD card. Installation prepares the current installer in RAM,
   replaces the old boot files with the image's matching FIP, kernel, and
   environment, reboots, and writes the full image from RAM. The image FIP must
-  match the firmware already on the device. Recovery keeps that FIP.
+  match the firmware already on the device for reinstalls. Factory installs use
+  the image's FIP. Recovery keeps that FIP.
 - From the factory system, Pro Desk writes an SD image directly and keeps the
   eMMC boot firmware and U-Boot environment. An eMMC image is staged first.
   The device then reboots into recovery.

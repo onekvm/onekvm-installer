@@ -98,6 +98,7 @@ func execute(ctx context.Context, args []string) error {
 	profile := fs.String("profile", "", tr.T("flag.profile"))
 	fs.String("lang", "auto", tr.T("flag.lang"))
 	showVersion := fs.Bool("version", false, tr.T("flag.version"))
+	iamPro := fs.Bool("iam-pro", false, tr.T("flag.iam-pro"))
 	jsonOutput := fs.Bool("json", false, tr.T("flag.json"))
 	repairID := fs.String("repair", "", tr.T("flag.repair"))
 	showHelp := fs.Bool("help", false, tr.T("flag.help"))
@@ -117,6 +118,9 @@ func execute(ctx context.Context, args []string) error {
 	if *showVersion {
 		fmt.Println("onekvm-installer " + buildinfo.Version)
 		return nil
+	}
+	if *iamPro && name != "install" && name != "prepare" {
+		return fmt.Errorf("--iam-pro is only supported by install and prepare")
 	}
 	if *image != "" && *remoteURL != "" {
 		return fmt.Errorf("--image and --url cannot be used together")
@@ -178,7 +182,7 @@ func execute(ctx context.Context, args []string) error {
 			return err
 		}
 		defer unlock()
-		return ui.Run(ctx, ui.Options{Command: name, Image: *image, Text: tr})
+		return ui.Run(ctx, ui.Options{Command: name, Image: *image, Text: tr, IAmPro: *iamPro})
 	}
 	if *repairID != "" {
 		return fmt.Errorf("--repair is only supported by solution")
@@ -281,7 +285,7 @@ func execute(ctx context.Context, args []string) error {
 			return fmt.Errorf("%s", tr.T("error.interface", *iface))
 		}
 	}
-	return ui.Run(ctx, ui.Options{Command: name, Image: *image, URL: *remoteURL, Tag: *tag, Interface: *iface, Device: d, Catalog: catalog, Text: tr})
+	return ui.Run(ctx, ui.Options{Command: name, Image: *image, URL: *remoteURL, Tag: *tag, Interface: *iface, Device: d, Catalog: catalog, Text: tr, IAmPro: *iamPro})
 }
 
 func main() {

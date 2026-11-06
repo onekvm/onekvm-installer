@@ -16,6 +16,7 @@ import (
 var trailerMagic = []byte("ONEKVM-IMG-META\x00")
 
 type Image struct {
+	NetworkPolicy bool   `json:"network_policy,omitempty"`
 	Profile       string `json:"profile"`
 	Media         string `json:"media"`
 	Machine       string `json:"machine"`
@@ -107,9 +108,10 @@ func parseMetadata(t []byte, size int64) (Image, error) {
 		return info, fmt.Errorf("missing OneKVM metadata; legacy/vendor images are rejected")
 	}
 	u16 := func(i int) uint16 { return binary.LittleEndian.Uint16(t[i:]) }
-	if u16(16) != 1 || u16(18) != 480 || u16(22) != 0 || u16(32) != 96 || u16(34) != 0 || u16(166) != 0 || !allZero(t[232:480]) {
+	if u16(16) != 1 || u16(18) != 480 || u16(22)&^uint16(1) != 0 || u16(32) != 96 || u16(34) != 0 || u16(166) != 0 || !allZero(t[232:480]) {
 		return info, fmt.Errorf("unsupported metadata version, lengths or flags")
 	}
+	info.NetworkPolicy = u16(22)&1 != 0
 	profiles := map[byte]string{1: "nanokvm", 2: "pro-sd", 3: "pro-emmc"}
 	info.Profile = profiles[t[20]]
 	media := byte(1)

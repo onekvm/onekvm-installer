@@ -48,6 +48,7 @@ var optionSyntax = map[string]string{
 	"help":      "-h, --help",
 	"json":      "--json",
 	"repair":    "--repair ID",
+	"iam-pro":   "--iam-pro",
 }
 
 func writeHelp(w io.Writer, tr i18n.Translator, command string) error {
@@ -92,7 +93,7 @@ func writeHelp(w io.Writer, tr i18n.Translator, command string) error {
 		options, examples = selected.options, selected.examples
 	}
 	section("options")
-	for _, option := range append(append([]string{}, options...), "lang", "version", "help") {
+	for _, option := range append(append([]string{}, options...), "iam-pro", "lang", "version", "help") {
 		row(optionSyntax[option], t("flag."+option))
 	}
 	if command == "verify" || command == "releases" {

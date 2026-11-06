@@ -28,7 +28,7 @@ func testModel(t *testing.T) *model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := newModel(context.Background(), Options{Command: "install", Interface: "eth0", Text: tr,
+	m := newModel(context.Background(), Options{Command: "install", Interface: "eth0", Text: tr, IAmPro: true,
 		Device:  installer.Device{Profile: "nanokvm", Disk: "/dev/mmcblk0", Media: "SD", DataMount: t.TempDir()},
 		Catalog: installer.DefaultCatalog}, defaults())
 	m.deps.verify = func(context.Context, string, string, int64, installer.Progress) (installer.Image, error) {
@@ -441,7 +441,7 @@ func TestLanguageSelectionPrecedesAllInteractiveCommands(t *testing.T) {
 	for _, command := range []string{"install", "prepare", "arm", "solution"} {
 		for _, language := range []string{"en", "zh", "zh-TW"} {
 			tr, _ := i18n.New(language, os.Getenv)
-			m := newModel(context.Background(), Options{Command: command, Text: tr}, defaults())
+			m := newModel(context.Background(), Options{Command: command, Text: tr, IAmPro: true}, defaults())
 			m.deps.check = func(context.Context, installer.CheckContext) (installer.CheckResult, error) {
 				return installer.CheckResult{}, nil
 			}

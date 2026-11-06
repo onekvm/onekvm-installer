@@ -190,7 +190,8 @@ func archiveFiles(t *testing.T, archive []byte) map[string][]byte {
 func TestConfigurationHookRestoresOnceAndRemovesPrivateSeed(t *testing.T) {
 	data := configFixture()
 	hash := sha256.Sum256(data)
-	archive, err := ConfigurationHook(Request{ConfigSHA256: hex.EncodeToString(hash[:]), SSHEnabled: true, Timezone: "Asia/Shanghai"})
+	policy := &NetworkPolicy{Version: 1, Disabled: []string{"internet", "dns"}}
+	archive, err := ConfigurationHook(Request{ConfigSHA256: hex.EncodeToString(hash[:]), SSHEnabled: true, Timezone: "Asia/Shanghai", Image: Image{NetworkPolicy: true}, NetworkPolicy: policy})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +247,11 @@ func TestConfigurationHookRestoresOnceAndRemovesPrivateSeed(t *testing.T) {
 			got, err := os.ReadFile(path)
 			if err != nil || !bytes.Equal(data, got) {
 				t.Fatal("config was not restored exactly", err)
+			}
+			raw, err := os.ReadFile(filepath.Join(upper, "etc/onekvm/network-policy.json"))
+			var restored NetworkPolicy
+			if err != nil || decodeNetworkPolicy(raw, &restored) != nil || strings.Join(restored.Disabled, ",") != "internet,dns" {
+				t.Fatal("network policy was not restored", err)
 			}
 			stat, err := os.Stat(path)
 			if err != nil || stat.Mode().Perm() != 0600 {

@@ -8,10 +8,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"syscall"
 )
 
 type Request struct {
+	NetworkPolicy   *NetworkPolicy    `json:"network_policy,omitempty"`
 	Version         int               `json:"version"`
 	Token           string            `json:"token"`
 	State           string            `json:"state"`
@@ -58,6 +60,16 @@ func PrepareDownloaded(ctx context.Context, d Device, image *DownloadedImage, fi
 }
 
 func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, downloaded *DownloadedImage, firstboot []byte, snapshot *SystemSnapshot, report Reporter) (req Request, err error) {
+	policy, err := ParseNetworkPolicy(firstboot)
+	if err != nil {
+		return req, err
+	}
+	if snapshot != nil {
+		policy = snapshot.NetworkPolicy
+	}
+	if err := policy.Validate(); err != nil {
+		return req, err
+	}
 	if snapshot != nil && !d.Reinstall {
 		return req, fmt.Errorf("configuration migration requires an installed OneKVM system")
 	}
@@ -128,6 +140,9 @@ func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, 
 	})
 	if err != nil {
 		return req, err
+	}
+	if e := CheckNetworkPolicy(info, policy); e != nil {
+		return req, e
 	}
 	mem, err := Memory("MemTotal")
 	if err != nil {
@@ -210,7 +225,7 @@ func prepare(ctx context.Context, d Device, source string, asset *ReleaseAsset, 
 		if _, err = rand.Read(token); err != nil {
 			return err
 		}
-		req = Request{Version: RecoveryAPI, Token: hex.EncodeToString(token), State: "prepared", Device: d, Image: info, ImageBytes: info.PayloadSize + 512}
+		req = Request{Version: RecoveryAPI, Token: hex.EncodeToString(token), State: "prepared", Device: d, Image: info, ImageBytes: info.PayloadSize + 512, NetworkPolicy: policy}
 		if snapshot != nil {
 			data, _, _, e := systemConfiguration(snapshot.Data)
 			if e != nil {
@@ -256,6 +271,20 @@ func LoadPrepared(d Device, progress Progress) (Request, error) {
 }
 
 func RequestHashes(req *Request, dir string, verify bool, progress Progress) error {
+	if err := CheckNetworkPolicy(req.Image, req.NetworkPolicy); err != nil {
+		return err
+	}
+	firstboot, err := os.ReadFile(filepath.Join(dir, "firstboot.txt"))
+	if err != nil {
+		return err
+	}
+	policy, err := ParseNetworkPolicy(firstboot)
+	if err != nil {
+		return err
+	}
+	if (req.ConfigSHA256 == "" || policy != nil) && !reflect.DeepEqual(policy, req.NetworkPolicy) {
+		return fmt.Errorf("staged network policy does not match firstboot configuration")
+	}
 	files := []struct {
 		name string
 		hash *string

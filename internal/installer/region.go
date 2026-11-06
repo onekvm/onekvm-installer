@@ -8,8 +8,9 @@ import (
 )
 
 type SystemSettings struct {
-	Language string
-	Timezone string
+	Language      string
+	Timezone      string
+	NetworkPolicy *NetworkPolicy
 }
 
 func (s SystemSettings) Normalize() (SystemSettings, error) {

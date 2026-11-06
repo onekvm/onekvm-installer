@@ -15,6 +15,7 @@ const SystemConfigName = "onekvm-system-config.json"
 const maxSystemConfig = 4 * MiB
 
 type SystemSnapshot struct {
+	NetworkPolicy     *NetworkPolicy
 	Data              []byte
 	Access            AccessInfo
 	Timezone, Version string
@@ -36,6 +37,15 @@ func SnapshotSystem(root string) (SystemSnapshot, error) {
 	result.Data, result.Access, result.Timezone, err = systemConfiguration(data)
 	if err != nil {
 		return SystemSnapshot{}, err
+	}
+	if raw, e := os.ReadFile(filepath.Join(root, "etc/onekvm/network-policy.json")); e == nil {
+		var policy NetworkPolicy
+		if e := decodeNetworkPolicy(raw, &policy); e != nil {
+			return SystemSnapshot{}, e
+		}
+		result.NetworkPolicy = &policy
+	} else if !os.IsNotExist(e) {
+		return SystemSnapshot{}, e
 	}
 	if result.Timezone == "" {
 		result.Timezone = ReadTrim(filepath.Join(root, "etc/timezone"))
@@ -223,6 +233,18 @@ func ConfigurationHook(req Request) ([]byte, error) {
 		return nil, err
 	}
 	var extras strings.Builder
+	if req.NetworkPolicy != nil {
+		if err := CheckNetworkPolicy(req.Image, req.NetworkPolicy); err != nil {
+			return nil, err
+		}
+		data, err := json.Marshal(req.NetworkPolicy)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(&extras, "printf '%%s\\n' %s >\"$dest/etc/onekvm/network-policy.json\" || fatal 'Cannot restore network policy'\nchmod 0644 \"$dest/etc/onekvm/network-policy.json\" || fatal 'Cannot protect network policy'\n", cliQuote(string(data)))
+	} else {
+		extras.WriteString("rm -f \"$dest/etc/onekvm/network-policy.json\" || fatal 'Cannot clear obsolete network policy'\n")
+	}
 	if req.SSHEnabled {
 		extras.WriteString("mkdir -p \"$dest/etc/systemd/system/sockets.target.wants\" || fatal 'Cannot restore SSH startup'\nln -sf /usr/lib/systemd/system/dropbear.socket \"$dest/etc/systemd/system/sockets.target.wants/dropbear.socket\" || fatal 'Cannot restore SSH startup'\n")
 	}

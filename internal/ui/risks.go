@@ -82,6 +82,50 @@ func (m *model) disabledRisks() []string {
 	return names
 }
 
+func requiredRisk(id string) bool {
+	return id == "cpu" || id == "memory" || id == "storage" || id == "linux"
+}
+
+func (m *model) blockingRisks() []string {
+	var names []string
+	for _, item := range riskOptions {
+		if requiredRisk(item.id) && m.risks.disabled[item.id] {
+			names = append(names, m.opts.Text.T("risk."+item.id+".title"))
+		}
+	}
+	return names
+}
+
+func (m *model) onlineImageAllowed() bool {
+	return !m.risks.disabled["download"] && !m.risks.disabled["internet"]
+}
+
+func (m *model) networkPolicy() *installer.NetworkPolicy {
+	disabled := []string{}
+	for _, item := range riskOptions {
+		if m.risks.disabled[item.id] && !requiredRisk(item.id) && item.id != "download" {
+			disabled = append(disabled, item.id)
+		}
+	}
+	if len(disabled) == 0 {
+		return nil
+	}
+	return &installer.NetworkPolicy{Version: 1, Disabled: disabled}
+}
+
+func (m *model) checkImagePolicy() bool {
+	policy := m.networkPolicy()
+	if !m.opts.IAmPro && m.systemSnapshot != nil {
+		policy = m.systemSnapshot.NetworkPolicy
+	}
+	if installer.CheckNetworkPolicy(m.image, policy) != nil {
+		m.goPage(localPage)
+		m.error("risk.policy_unsupported")
+		return false
+	}
+	return true
+}
+
 func (m *model) riskLayout() riskGeometry {
 	t := m.opts.Text.T
 	g := riskGeometry{width: max(1, m.width-4), height: max(1, m.height-2)}
@@ -144,7 +188,11 @@ func (m *model) riskContent() string {
 	for i, point := range r.points {
 		blocks = append(blocks, fmt.Sprintf("%d. %s", i+1, t(point)))
 	}
-	blocks = append(blocks, t("risk.off"))
+	if requiredRisk(r.id) {
+		blocks = append(blocks, t("risk.off"))
+	} else {
+		blocks = append(blocks, t("risk."+r.id+".off"))
+	}
 	return strings.Join(blocks, "\n\n")
 }
 
@@ -206,12 +254,15 @@ func (m *model) risksView() string {
 		footer = []string{m.riskButton(t("action.back"), true, true), muted.Render(t("risk.detail_help")), ""}
 	} else {
 		disabled := m.disabledRisks()
+		blocked := m.blockingRisks()
 		status := t("risk.ready")
-		if len(disabled) > 0 {
-			status = danger.Render(t("risk.blocked", len(disabled)) + " " + strings.Join(disabled, ", "))
+		if len(blocked) > 0 {
+			status = danger.Render(t("risk.blocked", len(blocked)) + " " + strings.Join(blocked, ", "))
+		} else if len(disabled) > 0 {
+			status = t("risk.optional_disabled", len(disabled))
 		}
 		footer = []string{ansi.Truncate(status, g.width, "…"),
-			m.riskButton(t("risk.next"), m.risks.focus == 2, len(disabled) == 0) + "  " + m.riskButton(t("action.back"), m.risks.focus == 3, true),
+			m.riskButton(t("risk.next"), m.risks.focus == 2, len(blocked) == 0) + "  " + m.riskButton(t("action.back"), m.risks.focus == 3, true),
 			muted.Render(t("risk.help"))}
 	}
 	view := g.header + "\n" + body + "\n\n" + strings.Join(footer, "\n")
@@ -235,7 +286,7 @@ func (m *model) toggleRisk() {
 func (m *model) acceptRisks() tea.Cmd {
 	// This is the transition guard, independent of button styling or the input
 	// path (mouse, Enter, shortcut, or a supplied --image/--url).
-	if len(m.disabledRisks()) != 0 {
+	if len(m.blockingRisks()) != 0 {
 		return nil
 	}
 	m.risks.accepted = true

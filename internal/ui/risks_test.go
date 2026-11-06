@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/onekvm/onekvm-installer/internal/i18n"
+	"github.com/onekvm/onekvm-installer/internal/installer"
 )
 
 func riskModel(t *testing.T, language string) *model {
@@ -18,7 +19,7 @@ func riskModel(t *testing.T, language string) *model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := newModel(context.Background(), Options{Command: "install", Text: tr}, services{})
+	m := newModel(context.Background(), Options{Command: "install", Text: tr, IAmPro: true}, services{})
 	m.goPage(languagePage)
 	m.selectItem()
 	if m.page != riskPage || m.task != nil {
@@ -27,7 +28,7 @@ func riskModel(t *testing.T, language string) *model {
 	return m
 }
 
-func TestEveryDisabledRiskBlocksAllContinueInputs(t *testing.T) {
+func TestOnlyRequiredDisabledRisksBlockContinue(t *testing.T) {
 	for i, item := range riskOptions {
 		t.Run(item.id, func(t *testing.T) {
 			m := riskModel(t, "en")
@@ -35,6 +36,20 @@ func TestEveryDisabledRiskBlocksAllContinueInputs(t *testing.T) {
 			key(m, tea.KeySpace)
 			if len(m.disabledRisks()) != 1 || !m.risks.disabled[item.id] {
 				t.Fatal("option was not disabled")
+			}
+			if !requiredRisk(item.id) {
+				m.acceptRisks()
+				want := sourcePage
+				if item.id == "internet" || item.id == "download" {
+					want = localPage
+				}
+				if m.page != want || !m.risks.accepted {
+					t.Fatal("optional opt-out blocked continuing")
+				}
+				if item.id != "download" && m.networkPolicy() == nil {
+					t.Fatal("opt-out was not retained for firstboot")
+				}
+				return
 			}
 			m.risks.focus = 2
 			if key(m, tea.KeyEnter) != nil || m.acceptRisks() != nil {
@@ -71,7 +86,7 @@ func TestRiskReviewCannotBeSkippedByCommandFlags(t *testing.T) {
 				} else if source == "url" {
 					m.opts.URL = "https://example.org/image.img"
 				}
-				m.risks.disabled["dns"] = true
+				m.risks.disabled["cpu"] = true
 				m.startWizard()
 				if m.acceptRisks() != nil || m.task != nil || m.page != riskPage {
 					t.Fatal("command flags started work before all options were allowed")
@@ -181,5 +196,40 @@ func TestRiskDetailsDoNotExposeURLCredentials(t *testing.T) {
 		if strings.Contains(content, secret) {
 			t.Fatal("image credentials leaked in risk details")
 		}
+	}
+}
+
+func TestProFlagControlsRiskPageAndOfflineClearsRemoteSelection(t *testing.T) {
+	for _, pro := range []bool{false, true} {
+		tr, _ := i18n.New("en", func(string) string { return "" })
+		m := newModel(context.Background(), Options{Command: "install", Text: tr, IAmPro: pro}, services{})
+		m.startWizard()
+		want := sourcePage
+		if pro {
+			want = riskPage
+		}
+		if m.page != want || m.task != nil {
+			t.Fatal("unexpected flag entry", pro, m.page)
+		}
+	}
+	m := riskModel(t, "en")
+	m.opts.URL, m.remoteURL = "https://example.org/image.img", "https://example.org/image.img"
+	m.asset = &installer.ReleaseAsset{Name: "stale.img"}
+	m.risks.disabled["internet"] = true
+	m.acceptRisks()
+	if m.page != localPage || m.task != nil || m.opts.URL != "" || m.remoteURL != "" || m.asset != nil {
+		t.Fatal("offline entry retained a remote source")
+	}
+	m.goPage(sourcePage)
+	if m.selectItem() != nil || m.page != sourcePage || m.task != nil {
+		t.Fatal("offline mode fetched GitHub")
+	}
+	m.image = installer.Image{}
+	if m.checkImagePolicy() || m.page != localPage {
+		t.Fatal("accepted opt-out with unsupported image")
+	}
+	m.image.NetworkPolicy = true
+	if !m.checkImagePolicy() {
+		t.Fatal("rejected policy-aware image")
 	}
 }

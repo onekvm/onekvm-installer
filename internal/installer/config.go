@@ -2,6 +2,7 @@ package installer
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"os"
@@ -83,6 +84,16 @@ func Firstboot(username, password string, n Network, system SystemSettings) ([]b
 	}
 	prefix := "set interfaces ethernet " + n.Interface + " "
 	lines := []string{"set auth user " + cliQuote(username) + " role admin", "set auth user " + cliQuote(username) + " encrypted-password " + cliQuote(string(hash)), prefix + "mode " + n.Mode}
+	if system.NetworkPolicy != nil {
+		if err := system.NetworkPolicy.Validate(); err != nil {
+			return nil, err
+		}
+		policy, err := json.Marshal(system.NetworkPolicy)
+		if err != nil {
+			return nil, err
+		}
+		lines = append([]string{NetworkPolicyPrefix + string(policy)}, lines...)
+	}
 	lines = append(lines, "set system language "+system.Language, "set system time-zone "+system.Timezone)
 	if n.Mode == "static" {
 		lines = append(lines, prefix+"address "+n.Address)

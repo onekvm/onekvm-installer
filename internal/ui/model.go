@@ -24,6 +24,7 @@ import (
 )
 
 type Options struct {
+	IAmPro                              bool
 	Command, Image, URL, Tag, Interface string
 	Device                              installer.Device
 	Catalog                             installer.Catalog
@@ -216,7 +217,7 @@ func newModel(ctx context.Context, opts Options, deps services) *model {
 // Even commands that resume an installation choose a language
 // before starting work. Merely opening the program never changes boot files.
 func (m *model) startWizard() tea.Cmd {
-	if !m.risks.accepted {
+	if m.opts.IAmPro && !m.risks.accepted {
 		m.goPage(riskPage)
 		return textinput.Blink
 	}
@@ -237,6 +238,9 @@ func (m *model) startInstallationWizard() tea.Cmd {
 			return req, err
 		})
 	default:
+		if !m.onlineImageAllowed() {
+			m.opts.URL, m.remoteURL, m.asset = "", "", nil
+		}
 		if m.opts.Image != "" || m.opts.URL != "" || m.opts.Command == "solution" {
 			if m.opts.URL != "" {
 				m.goPage(remotePage)
@@ -246,6 +250,8 @@ func (m *model) startInstallationWizard() tea.Cmd {
 			if m.source != "" {
 				return m.verifyLocalImage()
 			}
+		} else if !m.onlineImageAllowed() {
+			m.goPage(localPage)
 		} else {
 			m.goPage(sourcePage)
 		}
@@ -608,8 +614,12 @@ func (m *model) back() tea.Cmd {
 	case languagePage, preparedPage, finishedPage, failedPage:
 		return m.exit()
 	case sourcePage:
-		m.goPage(riskPage)
-		m.risks.accepted = false
+		if m.opts.IAmPro {
+			m.goPage(riskPage)
+			m.risks.accepted = false
+		} else {
+			m.goPage(languagePage)
+		}
 	case issuesPage:
 		// Escape must never bypass a blocking check.
 		return m.exit()
@@ -687,6 +697,10 @@ func (m *model) selectItem() tea.Cmd {
 		m.opts.Text, _ = i18n.New(item.id, os.Getenv)
 		return m.startWizard()
 	case sourcePage:
+		if item.id != "local" && !m.onlineImageAllowed() {
+			m.error("risk.local_required")
+			return nil
+		}
 		m.image = installer.Image{}
 		m.closeDownload()
 		m.source, m.remoteURL, m.asset = "", "", nil
@@ -773,6 +787,9 @@ func (m *model) selectItem() tea.Cmd {
 		}
 		if m.systemSnapshot != nil {
 			snapshot, source, asset, downloaded := *m.systemSnapshot, m.source, m.asset, m.downloaded
+			if m.opts.IAmPro {
+				snapshot.NetworkPolicy = m.networkPolicy()
+			}
 			snapshot.Data = append([]byte(nil), snapshot.Data...)
 			return m.begin("prepare", "reinstall.prepare", func(ctx context.Context, report installer.Reporter) (any, error) {
 				defer clear(snapshot.Data)
@@ -783,7 +800,7 @@ func (m *model) selectItem() tea.Cmd {
 			})
 		}
 		username, password, n, source, asset, downloaded := m.username, m.password, m.network, m.source, m.asset, m.downloaded
-		system := installer.SystemSettings{Language: m.opts.Text.Language, Timezone: m.timezone}
+		system := installer.SystemSettings{Language: m.opts.Text.Language, Timezone: m.timezone, NetworkPolicy: m.networkPolicy()}
 		m.password = ""
 		return m.begin("prepare", "op.prepare", func(ctx context.Context, report installer.Reporter) (any, error) {
 			var firstboot []byte
@@ -915,7 +932,7 @@ func (m *model) submitForm() tea.Cmd {
 		deps, d := m.deps, m.opts.Device
 		if installer.DirectInstall(d) {
 			username, password, n, source, asset := m.username, m.password, m.network, m.source, m.asset
-			system := installer.SystemSettings{Language: m.opts.Text.Language, Timezone: m.timezone}
+			system := installer.SystemSettings{Language: m.opts.Text.Language, Timezone: m.timezone, NetworkPolicy: m.networkPolicy()}
 			if m.downloaded != nil {
 				asset = nil // Use the verified RAM file; never fetch the release again.
 			}
@@ -1023,6 +1040,9 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 				clear(m.systemSnapshot.Data)
 			}
 			m.systemSnapshot = &snapshot
+			if !m.checkImagePolicy() {
+				return nil
+			}
 			m.username, m.network, m.timezone = snapshot.Access.Username, snapshot.Access.Network, snapshot.Timezone
 			m.goPage(reviewPage)
 
@@ -1053,11 +1073,17 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 		case "download":
 			m.source = m.downloaded.Source
 			m.image = m.downloaded.Image
+			if !m.checkImagePolicy() {
+				return nil
+			}
 			return m.startChecks("account")
 		case "remote-download":
 			m.source = m.downloaded.Source
 			m.image = m.downloaded.Image
 			m.goPage(remotePage)
+			if !m.checkImagePolicy() {
+				return nil
+			}
 			if !m.selectTarget(m.image.Profile) {
 				m.closeDownload()
 				return nil
@@ -1072,6 +1098,9 @@ func (m *model) finishJob(r jobResult) tea.Cmd {
 				return textinput.Blink
 			}
 			m.image = info
+			if !m.checkImagePolicy() {
+				return nil
+			}
 			return m.startChecks("account")
 		case "resume":
 			m.req = r.data.(installer.Request)

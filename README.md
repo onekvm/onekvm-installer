@@ -49,9 +49,9 @@ The device needs Linux and these commands: `curl`, `uname`, `mktemp`, `awk`,
 ## Installer steps
 
 1. Choose a language.
-2. Review network and hardware use. Each Details button shows its risk count,
-   client software, connection targets, and numbered notices, including unknown
-   risks. Disabling any item blocks Next; allow it again or exit.
+2. With `--iam-pro`, review network and hardware use. Details show the client,
+   destinations and number of conditional risks. Optional network opt-outs allow
+   installation; disabling CPU, memory, storage or Linux blocks Next.
 3. Choose a GitHub image, an HTTP(S) URL, or a local `.img`.
 4. Check metadata, profile, storage type, and SHA-256.
 5. On an existing OneKVM system, keep the current settings or start fresh.
@@ -61,17 +61,28 @@ The device needs Linux and these commands: `curl`, `uname`, `mktemp`, `awk`,
 8. Confirm the target disk.
 9. Write the image, verify it, then reboot now or later.
 
-The risk review precedes image requests, including `--url`, `--image`, and
-interactive resume commands. It checks permission to continue; it does not
-change running services, switch off hardware, or apply firewall rules. Allowing
-an item does not configure a TURN server or enable ACME automatically. The
-Internet item identifies `iptables` / `ip6tables` as the target system's firewall
-tools; a disabled Internet choice prevents installation rather than writing a
-firewall policy. The bootstrap download has already happened before this page.
-Risk counts are notice counts, not confirmed vulnerability counts. Hardware
-noise notices describe possible side channels under specific measurement
-conditions, not a confirmed leak on the device. Processor, memory, storage and
-Linux kernel use are separate items; disabling any of them also blocks Next.
+The advanced page is shown only by `install --iam-pro` or `prepare --iam-pro`.
+It precedes image requests. Disabling Internet or image downloads requires a
+local image, including when `--url` was supplied. The bootstrap download has
+already happened before this page. No policy is applied to the running system.
+
+Installed network opt-outs require a policy-aware image; older images are
+rejected before writing. First boot applies IPv4/IPv6 OUTPUT and FORWARD rules
+in dedicated chains, retaining existing rules. Internet off permits loopback,
+private/link-local networks, link multicast and DHCP; public destinations,
+including globally addressed IPv6 LANs, are blocked. LAN proxies may still relay
+traffic. DNS off disables system resolution and ordinary DNS/DoT; applications
+with their own DoH are outside that switch. NTP and mDNS are disabled separately.
+Discovery, STUN/TURN, ACME, online updates and extension feed/install operations
+are gated in their clients. Local updates and complete local extension packages
+remain available. Network virtual media is provided by extensions.
+
+Risk counts count notices, not confirmed vulnerabilities. Listed domains are
+connection destinations, not evidence of malicious behavior. Exploitation requires
+the stated attacker access or an actual client flaw. Hardware noise notices are
+conditional side-channel risks, not confirmed leaks. Allowing TURN or ACME does
+not configure or automatically enable them. Policy format and recovery:
+[installed network policy](../onekvm-core/docs/network-policy.md).
 
 The target disk is shown before it is erased. Writing clears that disk.
 Wi-Fi passwords are omitted from the confirmation page, JSON output, and the

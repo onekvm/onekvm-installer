@@ -111,6 +111,13 @@ func (m Machine) InstallDirect(ctx context.Context, d installer.Device, source s
 		if _, err = installer.AccessFromFirstboot(firstboot); err != nil {
 			return err
 		}
+		policy, err := installer.ParseNetworkPolicy(firstboot)
+		if err != nil {
+			return err
+		}
+		if policy != nil && len(policy.Disabled) > 0 && asset != nil {
+			return fmt.Errorf("network policy requires a verified local image before writing")
+		}
 		if asset == nil {
 			localFile, err = openLocalImage(source, d.Disk)
 			if err != nil {
@@ -126,6 +133,11 @@ func (m Machine) InstallDirect(ctx context.Context, d installer.Device, source s
 			}
 		} else if asset.Size <= 512 || asset.Size > d.Bytes {
 			return fmt.Errorf("release asset exceeds target capacity")
+		}
+		if asset == nil {
+			if err := installer.CheckNetworkPolicy(local, policy); err != nil {
+				return err
+			}
 		}
 		return ctx.Err()
 	})

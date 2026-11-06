@@ -56,7 +56,7 @@ func TestSplashLastsThreeSecondsBeforeLanguageSelection(t *testing.T) {
 	// A late timer must not replay the splash after the user starts navigating.
 	m.Update(key(m, tea.KeyEnter)())
 	m.Update(splashTickMsg{started.Add(4 * time.Second)})
-	if m.page != riskPage {
+	if m.page != sourcePage {
 		t.Fatal("late splash tick interrupted the wizard")
 	}
 }

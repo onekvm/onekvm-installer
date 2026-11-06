@@ -49,14 +49,29 @@ The device needs Linux and these commands: `curl`, `uname`, `mktemp`, `awk`,
 ## Installer steps
 
 1. Choose a language.
-2. Choose a GitHub image, an HTTP(S) URL, or a local `.img`.
-3. Check metadata, profile, storage type, and SHA-256.
-4. On an existing OneKVM system, keep the current settings or start fresh.
+2. Review network and hardware use. Each Details button shows its risk count,
+   client software, connection targets, and numbered notices, including unknown
+   risks. Disabling any item blocks Next; allow it again or exit.
+3. Choose a GitHub image, an HTTP(S) URL, or a local `.img`.
+4. Check metadata, profile, storage type, and SHA-256.
+5. On an existing OneKVM system, keep the current settings or start fresh.
    A fresh install creates the administrator and sets the time zone.
-5. Set Ethernet and Wi-Fi on separate pages.
-6. Check the device and the selected image.
-7. Confirm the target disk.
-8. Write the image, verify it, then reboot now or later.
+6. Set Ethernet and Wi-Fi on separate pages.
+7. Check the device and the selected image.
+8. Confirm the target disk.
+9. Write the image, verify it, then reboot now or later.
+
+The risk review precedes image requests, including `--url`, `--image`, and
+interactive resume commands. It checks permission to continue; it does not
+change running services, switch off hardware, or apply firewall rules. Allowing
+an item does not configure a TURN server or enable ACME automatically. The
+Internet item identifies `iptables` / `ip6tables` as the target system's firewall
+tools; a disabled Internet choice prevents installation rather than writing a
+firewall policy. The bootstrap download has already happened before this page.
+Risk counts are notice counts, not confirmed vulnerability counts. Hardware
+noise notices describe possible side channels under specific measurement
+conditions, not a confirmed leak on the device. Processor, memory, storage and
+Linux kernel use are separate items; disabling any of them also blocks Next.
 
 The target disk is shown before it is erased. Writing clears that disk.
 Wi-Fi passwords are omitted from the confirmation page, JSON output, and the

@@ -86,6 +86,8 @@ const (
 	issuesPage
 	repairConfirmPage
 	repairDonePage
+	riskPage
+	riskDetailsPage
 )
 
 type field struct {
@@ -198,6 +200,7 @@ type model struct {
 	solutionView   solutionView
 	repairPlan     *installer.RepairPlan
 	repairErr      error
+	risks          riskState
 }
 
 func newModel(ctx context.Context, opts Options, deps services) *model {
@@ -213,6 +216,10 @@ func newModel(ctx context.Context, opts Options, deps services) *model {
 // Even commands that resume an installation choose a language
 // before starting work. Merely opening the program never changes boot files.
 func (m *model) startWizard() tea.Cmd {
+	if !m.risks.accepted {
+		m.goPage(riskPage)
+		return textinput.Blink
+	}
 	return m.startInstallationWizard()
 }
 
@@ -344,6 +351,10 @@ func (m *model) goPage(p page) {
 				break
 			}
 		}
+	}
+	if riskScreen(p) {
+		m.initRisks()
+		m.resizeRisks()
 	}
 }
 
@@ -518,7 +529,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if solutionScreen(m.page) {
 			m.resizeSolution()
 		}
+		if riskScreen(m.page) {
+			m.resizeRisks()
+		}
 	case tea.MouseMsg:
+		if riskScreen(m.page) {
+			return m, m.updateRiskMouse(msg)
+		}
 		if solutionScreen(m.page) {
 			return m, m.updateSolutionMouse(msg)
 		}
@@ -532,6 +549,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
 	case tea.KeyMsg:
+		if riskScreen(m.page) {
+			return m, m.updateRiskKey(msg)
+		}
 		if m.page == splashPage {
 			if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEsc {
 				return m, m.exit()
@@ -588,7 +608,8 @@ func (m *model) back() tea.Cmd {
 	case languagePage, preparedPage, finishedPage, failedPage:
 		return m.exit()
 	case sourcePage:
-		m.goPage(languagePage)
+		m.goPage(riskPage)
+		m.risks.accepted = false
 	case issuesPage:
 		// Escape must never bypass a blocking check.
 		return m.exit()

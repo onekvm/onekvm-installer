@@ -52,6 +52,12 @@ func testModel(t *testing.T) *model {
 	if cmd != nil {
 		m.Update(cmd())
 	}
+	if m.page != riskPage {
+		t.Fatal("language selection skipped risk review")
+	}
+	if cmd := m.acceptRisks(); cmd != nil {
+		m.Update(cmd())
+	}
 	return m
 }
 
@@ -289,7 +295,7 @@ func TestRebootFailureCanExit(t *testing.T) {
 }
 
 func TestCtrlCExitsEveryPageBeforeBootWrite(t *testing.T) {
-	for _, p := range []page{splashPage, languagePage, sourcePage, localPage, assetsPage, accountPage, networkPage, copiedDHCPPage, networkFormPage, reviewPage, preparedPage, confirmPage} {
+	for _, p := range []page{splashPage, languagePage, riskPage, riskDetailsPage, sourcePage, localPage, assetsPage, accountPage, networkPage, copiedDHCPPage, networkFormPage, reviewPage, preparedPage, confirmPage} {
 		m := testModel(t)
 		m.goPage(p)
 		if !isQuit(key(m, tea.KeyCtrlC)) {
@@ -452,7 +458,7 @@ func TestLanguageSelectionPrecedesAllInteractiveCommands(t *testing.T) {
 			if m.opts.Text.Language != "zh-TW" || m.page == languagePage {
 				t.Fatal("Traditional Chinese selection did not advance the wizard")
 			}
-			if command == "install" && !strings.Contains(ansi.Strip(m.View()), "選擇映像檔來源") {
+			if m.page != riskPage || !strings.Contains(ansi.Strip(m.View()), "連網與硬體安全") {
 				t.Fatal("wizard did not use the selected Traditional Chinese translation")
 			}
 		}

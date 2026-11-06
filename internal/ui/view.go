@@ -70,6 +70,9 @@ func (m *model) View() string {
 	if m.page == splashPage {
 		return m.splash.view(m.width, m.height)
 	}
+	if riskScreen(m.page) {
+		return m.risksView()
+	}
 	if solutionScreen(m.page) {
 		return m.solutionsView()
 	}

@@ -240,6 +240,12 @@ func (m *model) startInstallationWizard() tea.Cmd {
 	default:
 		if !m.onlineImageAllowed() {
 			m.opts.URL, m.remoteURL, m.asset = "", "", nil
+			if m.downloaded != nil {
+				if m.source == m.downloaded.Source {
+					m.source = ""
+				}
+				m.closeDownload()
+			}
 		}
 		if m.opts.Image != "" || m.opts.URL != "" || m.opts.Command == "solution" {
 			if m.opts.URL != "" {

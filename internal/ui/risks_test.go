@@ -215,9 +215,11 @@ func TestProFlagControlsRiskPageAndOfflineClearsRemoteSelection(t *testing.T) {
 	m := riskModel(t, "en")
 	m.opts.URL, m.remoteURL = "https://example.org/image.img", "https://example.org/image.img"
 	m.asset = &installer.ReleaseAsset{Name: "stale.img"}
+	m.downloaded = &installer.DownloadedImage{Source: "/ram/previous.img"}
+	m.source = m.downloaded.Source
 	m.risks.disabled["internet"] = true
 	m.acceptRisks()
-	if m.page != localPage || m.task != nil || m.opts.URL != "" || m.remoteURL != "" || m.asset != nil {
+	if m.page != localPage || m.task != nil || m.opts.URL != "" || m.remoteURL != "" || m.asset != nil || m.downloaded != nil || m.source != "" {
 		t.Fatal("offline entry retained a remote source")
 	}
 	m.goPage(sourcePage)

@@ -276,3 +276,47 @@ func TestConfigurationHookRestoresOnceAndRemovesPrivateSeed(t *testing.T) {
 		})
 	}
 }
+
+func TestSnapshotKeepsTheCurrentEthernetMAC(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"etc/onekvm", "sys/class/net/eth0/device"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "sys/class/net/eth0/address"), []byte("D2:C6:63:8B:3E:13\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(root, "etc/onekvm/config.json")
+	if err := os.WriteFile(config, configFixture(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mac := func(data []byte) string {
+		var cfg struct {
+			Network struct {
+				MAC string `json:"mac_address"`
+			} `json:"network"`
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			t.Fatal(err)
+		}
+		return cfg.Network.MAC
+	}
+	snapshot, err := SnapshotSystem(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mac(snapshot.Data); got != "d2:c6:63:8b:3e:13" {
+		t.Fatal("did not keep the current MAC", got)
+	}
+	if !bytes.Contains(snapshot.Data, []byte("kept-wifi-credential")) {
+		t.Fatal("MAC preservation dropped other network settings")
+	}
+	explicit := bytes.Replace(configFixture(), []byte(`"device":"eth0",`), []byte(`"device":"eth0","mac_address":"02:00:00:00:00:01",`), 1)
+	if err := os.WriteFile(config, explicit, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot, err = SnapshotSystem(root); err != nil || mac(snapshot.Data) != "02:00:00:00:00:01" {
+		t.Fatal("replaced an explicit MAC", err)
+	}
+}

@@ -38,6 +38,7 @@ type services struct {
 
 	fetch             func(context.Context, string, string) (installer.Release, error)
 	network           func(string, string) (installer.Network, error)
+	mac               func(string, string) string
 	wifi              func(string) (installer.WiFiSnapshot, error)
 	static            func(string, installer.Network) (installer.Network, error)
 	prepare           func(context.Context, installer.Device, string, *installer.ReleaseAsset, []byte, installer.Reporter) (installer.Request, error)
@@ -55,7 +56,7 @@ type services struct {
 }
 
 func defaults() services {
-	return services{snapshot: installer.SnapshotSystem, prepareConfig: installer.PrepareWithConfig, prepareDownloadedConfig: installer.PrepareDownloadedWithConfig, fetch: installer.FetchRelease, network: installer.CopyEthernetNetwork, wifi: installer.CopyWiFi, static: installer.StaticNetwork, prepare: installer.Prepare,
+	return services{snapshot: installer.SnapshotSystem, prepareConfig: installer.PrepareWithConfig, prepareDownloadedConfig: installer.PrepareDownloadedWithConfig, fetch: installer.FetchRelease, network: installer.CopyEthernetNetwork, mac: installer.CurrentMAC, wifi: installer.CopyWiFi, static: installer.StaticNetwork, prepare: installer.Prepare,
 		arm: installer.Arm, reboot: delayedReboot, verify: installer.VerifyContext, downloadURL: installer.DownloadURL, prepared: installer.LoadPrepared, target: installer.ProbeTarget, direct: installer.InstallDirect,
 		download: installer.DownloadImage, prepareDownloaded: installer.PrepareDownloaded, check: installer.CheckSolutions, repair: installer.PrepareRepair}
 }
@@ -806,6 +807,7 @@ func (m *model) selectItem() tea.Cmd {
 			})
 		}
 		username, password, n, source, asset, downloaded := m.username, m.password, m.network, m.source, m.asset, m.downloaded
+		n.MAC = m.currentMAC(n.Interface)
 		system := installer.SystemSettings{Language: m.opts.Text.Language, Timezone: m.timezone, NetworkPolicy: m.networkPolicy()}
 		m.password = ""
 		return m.begin("prepare", "op.prepare", func(ctx context.Context, report installer.Reporter) (any, error) {
@@ -938,6 +940,7 @@ func (m *model) submitForm() tea.Cmd {
 		deps, d := m.deps, m.opts.Device
 		if installer.DirectInstall(d) {
 			username, password, n, source, asset := m.username, m.password, m.network, m.source, m.asset
+			n.MAC = m.currentMAC(n.Interface)
 			system := installer.SystemSettings{Language: m.opts.Text.Language, Timezone: m.timezone, NetworkPolicy: m.networkPolicy()}
 			if m.downloaded != nil {
 				asset = nil // Use the verified RAM file; never fetch the release again.
@@ -1190,6 +1193,14 @@ func (m *model) downloadRemoteImage() tea.Cmd {
 	return m.begin("remote-download", "op.download", func(ctx context.Context, report installer.Reporter) (any, error) {
 		return image, deps.downloadURL(ctx, target, remoteURL, image, report)
 	})
+}
+
+// The installed system keeps the Ethernet MAC this device uses now.
+func (m *model) currentMAC(iface string) string {
+	if m.deps.mac == nil {
+		return ""
+	}
+	return m.deps.mac("/", iface)
 }
 
 func (m *model) selectTarget(profile string) bool {

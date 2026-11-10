@@ -38,6 +38,13 @@ func SnapshotSystem(root string) (SystemSnapshot, error) {
 	if err != nil {
 		return SystemSnapshot{}, err
 	}
+	if patched, changed, e := preserveSystemMAC(result.Data, root); e != nil {
+		clear(result.Data)
+		return SystemSnapshot{}, e
+	} else if changed {
+		clear(result.Data)
+		result.Data = patched
+	}
 	if raw, e := os.ReadFile(filepath.Join(root, "etc/onekvm/network-policy.json")); e == nil {
 		var policy NetworkPolicy
 		if e := decodeNetworkPolicy(raw, &policy); e != nil {
@@ -72,6 +79,35 @@ func SnapshotSystem(root string) (SystemSnapshot, error) {
 		}
 	}
 	return result, nil
+}
+
+// Without an explicit MAC the installed system would derive a new address;
+// record the one the primary Ethernet interface uses now.
+func preserveSystemMAC(data []byte, root string) ([]byte, bool, error) {
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, false, err
+	}
+	var network map[string]json.RawMessage
+	if err := json.Unmarshal(cfg["network"], &network); err != nil || network == nil {
+		return nil, false, fmt.Errorf("invalid system network settings")
+	}
+	var device, mac string
+	_ = json.Unmarshal(network["device"], &device)
+	_ = json.Unmarshal(network["mac_address"], &mac)
+	current := CurrentMAC(root, device)
+	if strings.TrimSpace(mac) != "" || current == "" {
+		return data, false, nil
+	}
+	var err error
+	if network["mac_address"], err = json.Marshal(current); err != nil {
+		return nil, false, err
+	}
+	if cfg["network"], err = json.Marshal(network); err != nil {
+		return nil, false, err
+	}
+	out, err := json.Marshal(cfg)
+	return append(out, '\n'), true, err
 }
 
 func systemConfiguration(data []byte) ([]byte, AccessInfo, string, error) {

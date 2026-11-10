@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -23,10 +24,39 @@ type Network struct {
 	DNS       []string      `json:"dns,omitempty"`
 	Hostname  string        `json:"hostname,omitempty"`
 	WiFi      []WiFiNetwork `json:"wifi,omitempty"`
+	// MAC keeps the Ethernet address the installed system currently uses.
+	MAC string `json:"mac,omitempty"`
 }
 
 var interfacePattern = regexp.MustCompile(`^(eth[0-9]+|en[a-zA-Z0-9]+)$`)
 var hostnamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
+var macPattern = regexp.MustCompile(`^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)
+
+// ValidMAC accepts a lowercase, nonzero unicast Ethernet address.
+func ValidMAC(mac string) bool {
+	if !macPattern.MatchString(mac) || mac == "00:00:00:00:00:00" {
+		return false
+	}
+	first, err := strconv.ParseUint(mac[:2], 16, 8)
+	return err == nil && first&1 == 0
+}
+
+// CurrentMAC returns the address a physical Ethernet interface uses now, or
+// "" when it is unavailable or unsuitable to persist.
+func CurrentMAC(root, iface string) string {
+	if !interfacePattern.MatchString(iface) {
+		return ""
+	}
+	sys := filepath.Join(root, "sys/class/net", iface)
+	if _, err := os.Stat(filepath.Join(sys, "device")); err != nil {
+		return ""
+	}
+	mac := strings.ToLower(ReadTrim(filepath.Join(sys, "address")))
+	if !ValidMAC(mac) {
+		return ""
+	}
+	return mac
+}
 
 func (n Network) Validate() error {
 	if !interfacePattern.MatchString(n.Interface) {
@@ -37,6 +67,9 @@ func (n Network) Validate() error {
 	}
 	if n.Hostname != "" && !hostnamePattern.MatchString(n.Hostname) {
 		return fmt.Errorf("invalid hostname")
+	}
+	if n.MAC != "" && !ValidMAC(n.MAC) {
+		return fmt.Errorf("invalid Ethernet MAC address")
 	}
 	if n.Mode == "static" {
 		p, err := netip.ParsePrefix(n.Address)
@@ -84,6 +117,9 @@ func Firstboot(username, password string, n Network, system SystemSettings) ([]b
 	}
 	prefix := "set interfaces ethernet " + n.Interface + " "
 	lines := []string{"set auth user " + cliQuote(username) + " role admin", "set auth user " + cliQuote(username) + " encrypted-password " + cliQuote(string(hash)), prefix + "mode " + n.Mode}
+	if n.MAC != "" {
+		lines = append(lines, prefix+"mac "+n.MAC)
+	}
 	if system.NetworkPolicy != nil {
 		if err := system.NetworkPolicy.Validate(); err != nil {
 			return nil, err
@@ -155,7 +191,7 @@ func CopyNetwork(root, iface string) (Network, error) {
 }
 
 func CopyEthernetNetwork(root, iface string) (Network, error) {
-	n := Network{Interface: iface, Hostname: CurrentHostname(root)}
+	n := Network{Interface: iface, Hostname: CurrentHostname(root), MAC: CurrentMAC(root, iface)}
 	if !interfacePattern.MatchString(iface) {
 		return n, fmt.Errorf("unsupported interface")
 	}

@@ -1,6 +1,8 @@
 package installer
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -91,5 +93,35 @@ func TestFirstbootCountsPasswordCharacters(t *testing.T) {
 	}
 	if _, err := Firstboot("operator", strings.Repeat("密", 25), n, SystemSettings{}); err == nil {
 		t.Fatal("exceeded the bcrypt input limit")
+	}
+}
+
+func TestFirstbootKeepsEthernetMAC(t *testing.T) {
+	n := Network{Interface: "eth0", Mode: "dhcp", MAC: "d2:c6:63:8b:3e:13"}
+	b, err := Firstboot("admin", "password1", n, SystemSettings{Language: "en", Timezone: "UTC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "\nset interfaces ethernet eth0 mac d2:c6:63:8b:3e:13\n") {
+		t.Fatalf("missing MAC statement:\n%s", b)
+	}
+	for _, bad := range []string{"01:00:00:00:00:01", "00:00:00:00:00:00", "D2:C6:63:8B:3E:13", "d2:c6:63:8b:3e"} {
+		n.MAC = bad
+		if _, err := Firstboot("admin", "password1", n, SystemSettings{Language: "en", Timezone: "UTC"}); err == nil {
+			t.Fatal("accepted invalid MAC", bad)
+		}
+	}
+	root := t.TempDir()
+	if CurrentMAC(root, "eth0") != "" {
+		t.Fatal("read a MAC without a physical interface")
+	}
+	if err := os.MkdirAll(filepath.Join(root, "sys/class/net/eth0/device"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sys/class/net/eth0/address"), []byte("D2:C6:63:8B:3E:13\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := CurrentMAC(root, "eth0"); got != "d2:c6:63:8b:3e:13" {
+		t.Fatal("wrong current MAC", got)
 	}
 }

@@ -124,4 +124,10 @@ func TestFirstbootKeepsEthernetMAC(t *testing.T) {
 	if got := CurrentMAC(root, "eth0"); got != "d2:c6:63:8b:3e:13" {
 		t.Fatal("wrong current MAC", got)
 	}
+	if err := os.WriteFile(filepath.Join(root, "sys/class/net/eth0/addr_assign_type"), []byte("1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := CurrentMAC(root, "eth0"); got != "" {
+		t.Fatal("kept a kernel-random MAC", got)
+	}
 }

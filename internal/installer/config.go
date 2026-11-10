@@ -42,13 +42,18 @@ func ValidMAC(mac string) bool {
 }
 
 // CurrentMAC returns the address a physical Ethernet interface uses now, or
-// "" when it is unavailable or unsuitable to persist.
+// "" when it is unavailable, kernel-random or otherwise unsuitable to persist.
 func CurrentMAC(root, iface string) string {
 	if !interfacePattern.MatchString(iface) {
 		return ""
 	}
 	sys := filepath.Join(root, "sys/class/net", iface)
 	if _, err := os.Stat(filepath.Join(sys, "device")); err != nil {
+		return ""
+	}
+	// A kernel-random address changes on every boot; let the bootloader or
+	// the installed system choose the address instead.
+	if ReadTrim(filepath.Join(sys, "addr_assign_type")) == "1" {
 		return ""
 	}
 	mac := strings.ToLower(ReadTrim(filepath.Join(sys, "address")))
